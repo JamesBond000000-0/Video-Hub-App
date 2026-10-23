@@ -15,6 +15,7 @@ import type { ImageElement, ImageElementPlus } from '../interfaces/final-object.
 import { acceptableFiles } from './main-filenames';
 import { extractAll } from './main-extract';
 import { sendCurrentProgress, insertTemporaryFieldsSingle, extractMetadataAsync, cleanUpFileName } from './main-support';
+import { notifyFaceIndexUpdated, scanVideoFaces } from './face/main-face';
 
 export interface TempMetadataQueueObject {
   fullPath: string;
@@ -43,6 +44,11 @@ let thumbExtractionStartTime = 0;
 let deleteThumbQueue;   // QueueObject
 let numberOfThumbsDeleted = 0;
 
+// face queue
+let faceQueue;          // QueueObject
+let facesDone = 0;
+let faceExtractionStartTime = 0;
+
 // =====================================================================================================================
 
 // Create maps where the value = 1 always.
@@ -64,7 +70,7 @@ let preventSleepIds: number[] = []; // prevent and allow sleep
 resetAllQueues();
 
 /**
- * Reset all three queues:
+ * Reset all queues:
  *  - Meta queue
  *  - Thumb queue
  *  - Delet queue
@@ -82,6 +88,9 @@ export function resetAllQueues(): void {
   }
   if (deleteThumbQueue && typeof deleteThumbQueue.kill === 'function') {
     deleteThumbQueue.kill();
+  }
+  if (faceQueue && typeof faceQueue.kill === 'function') {
+    faceQueue.kill();
   }
 
   // Meta queue ========================================================================================================
@@ -109,9 +118,34 @@ export function resetAllQueues(): void {
     logPerformance('THUMB QUEUE took ', thumbExtractionStartTime);
 
     thumbsDone = 0;
-    sendCurrentProgress(1, 1, 'done');
-    console.log('thumbnail extraction complete!');
-    allowSleep();
+    if (faceQueueIdle()) {
+      sendCurrentProgress(1, 1, 'done');
+      console.log('thumbnail extraction complete!');
+      allowSleep();
+    } else {
+      // face scans are still queued/running; the face queue drain sends the final 'done'
+      console.log('thumbnail extraction complete; face scan in progress');
+    }
+  });
+
+  // Face queue ========================================================================================================
+  facesDone = 0;
+  faceExtractionStartTime = 0;
+
+  faceQueue = async.queue(faceQueueRunner, 1); // 1 is the number of threads
+
+  faceQueue.drain(() => {
+
+    logPerformance('FACE QUEUE took ', faceExtractionStartTime);
+
+    facesDone = 0;
+    faceExtractionStartTime = 0;
+    notifyFaceIndexUpdated();
+    if (thumbQueue.length() === 0 && thumbQueue.running() === 0) {
+      sendCurrentProgress(1, 1, 'done');
+      console.log('face scan complete!');
+      allowSleep();
+    }
   });
 
   // Delete queue ======================================================================================================
@@ -133,9 +167,15 @@ function thumbQueueRunner(element: ImageElement, done): void {
   const screenshotOutputFolder: string = path.join(GLOBALS.selectedOutputFolder, 'vha-' + GLOBALS.hubName);
   const shouldExtractClips: boolean = GLOBALS.screenshotSettings.clipSnippets > 0;
 
+  // face scanning happens after thumbnail extraction, via the face queue
+  const doneAndScanFaces = (): void => {
+    enqueueFaceScan(element);
+    done();
+  };
+
   hasAllThumbs(element.hash, screenshotOutputFolder, shouldExtractClips)
     .then(() => {
-      done();
+      doneAndScanFaces();
     })
     .catch(() => {
       sendCurrentProgress( // TODO check whether sending data off by 1
@@ -150,8 +190,60 @@ function thumbQueueRunner(element: ImageElement, done): void {
         GLOBALS.selectedSourceFolders[element.inputSource].path,
         screenshotOutputFolder,
         GLOBALS.screenshotSettings,
-        done
+        doneAndScanFaces
       );
+    });
+}
+
+function faceQueueIdle(): boolean {
+  return !faceQueue || (faceQueue.length() === 0 && faceQueue.running() === 0);
+}
+
+/**
+ * Queue a face scan for this element (no-op unless face scanning is enabled
+ * and set to run automatically; design doc §5 / FaceSettings)
+ * @param element -- ImageElement whose thumbnails just finished extracting
+ */
+function enqueueFaceScan(element: ImageElement): void {
+  const settings = GLOBALS.faceSettings;
+  if (!settings || !settings.enabled || !settings.autoScanNew) {
+    return;
+  }
+  if (faceExtractionStartTime === 0) {
+    faceExtractionStartTime = performance.now();
+  }
+  faceQueue.push(element);
+}
+
+/**
+ * Face queue runner
+ * Runs for every element in the `faceQueue`
+ * @param element -- ImageElement to scan for faces
+ * @param done    -- callback to indicate the current scan finished
+ */
+function faceQueueRunner(element: ImageElement, done): void {
+  const screenshotOutputFolder: string = path.join(GLOBALS.selectedOutputFolder, 'vha-' + GLOBALS.hubName);
+  const sourceFolder = GLOBALS.selectedSourceFolders[element.inputSource];
+
+  sendCurrentProgress(
+    facesDone,
+    facesDone + faceQueue.length() + 1,
+    'scanningFaces'
+  );
+  facesDone++;
+
+  if (!sourceFolder || !sourceFolder.path) {
+    done();
+    return;
+  }
+
+  scanVideoFaces(element, sourceFolder.path, screenshotOutputFolder)
+    .then(() => {
+      done();
+    })
+    .catch((err) => {
+      console.log('face scan error for', element.fileName, err);
+      done();
     });
 }
 
@@ -487,6 +579,24 @@ export function extractAnyMissingThumbs(fullArray: ImageElement[]): void {
   preventSleep();
   fullArray.forEach((element: ImageElement) => {
     thumbQueue.push(element);
+  });
+}
+
+/**
+ * Send all `imageElements` to the `faceQueue`
+ * (already-scanned videos are skipped inside scanVideoFaces)
+ * @param fullArray          - ImageElement array
+ */
+export function extractAnyMissingFaces(fullArray: ImageElement[]): void {
+  if (!GLOBALS.faceSettings || !GLOBALS.faceSettings.enabled) {
+    return;
+  }
+  preventSleep();
+  if (faceExtractionStartTime === 0) {
+    faceExtractionStartTime = performance.now();
+  }
+  fullArray.forEach((element: ImageElement) => {
+    faceQueue.push(element);
   });
 }
 
