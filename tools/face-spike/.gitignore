@@ -1,0 +1,9 @@
+# Face spike local assets - never commit
+models/
+models-src/
+samples/
+out/
+.venv/
+node_modules/
+__pycache__/
+*.onnx
