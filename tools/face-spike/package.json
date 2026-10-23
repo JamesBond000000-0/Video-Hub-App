@@ -1,0 +1,19 @@
+{
+  "name": "vha-face-spike",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Phase 0 spike for Video Hub App face recognition (SCRFD + ArcFace port validation). Standalone; not part of the app build.",
+  "scripts": {
+    "compare": "tsx src/compare.ts",
+    "bench": "tsx src/bench.ts"
+  },
+  "dependencies": {
+    "onnxruntime-node": "^1.23.0",
+    "sharp": "^0.34.0"
+  },
+  "devDependencies": {
+    "tsx": "^4.20.0",
+    "typescript": "^5.9.0"
+  }
+}
