@@ -35,7 +35,9 @@
     "asar": true,
     "asarUnpack": [
       "../node_modules/ffmpeg-static",
-      "../node_modules/node-ffprobe-installer"
+      "../node_modules/node-ffprobe-installer",
+      "../node_modules/onnxruntime-node",
+      "../node_modules/sharp"
     ],
     "target": [
       "nsis",
@@ -55,7 +57,9 @@
     "asar": true,
     "asarUnpack": [
       "../node_modules/ffmpeg-static",
-      "../node_modules/node-ffprobe-installer"
+      "../node_modules/node-ffprobe-installer",
+      "../node_modules/onnxruntime-node",
+      "../node_modules/sharp"
     ]
   },
   "linux": {
