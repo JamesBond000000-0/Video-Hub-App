@@ -94,21 +94,22 @@ function runFfmpeg(args: string[]): Promise<void> {
 
 // Display crop (§5.3): square around the face centre, side = max(w, h) * 1.35,
 // clamped to the frame, resized to 256x256.
+// NOTE: all geometry must stay integer -- with a float width the pixel
+// indices become non-integers and typed-array writes are silently dropped,
+// which produced all-black crops (found by the Phase 2 harness).
 function displayCrop(img: RawImage, face: DetectedFace): RawImage {
   const [x1, y1, x2, y2] = face.bbox;
-  const side = Math.max(x2 - x1, y2 - y1) * 1.35;
+  const side = Math.max(1, Math.round(Math.max(x2 - x1, y2 - y1) * 1.35));
   const cx = (x1 + x2) / 2;
   const cy = (y1 + y2) / 2;
-  const sx = Math.max(0, Math.min(img.width - side, cx - side / 2));
-  const sy = Math.max(0, Math.min(img.height - side, cy - side / 2));
+  const sx = Math.max(0, Math.min(img.width - side, Math.round(cx - side / 2)));
+  const sy = Math.max(0, Math.min(img.height - side, Math.round(cy - side / 2)));
   const sw = Math.min(side, img.width - sx);
   const sh = Math.min(side, img.height - sy);
   const crop: RawImage = { data: new Uint8Array(sw * sh * 3), width: sw, height: sh };
-  const x0 = Math.round(sx);
-  const y0 = Math.round(sy);
   for (let y = 0; y < sh; y++) {
     for (let x = 0; x < sw; x++) {
-      const si = ((y0 + y) * img.width + (x0 + x)) * 3;
+      const si = ((sy + y) * img.width + (sx + x)) * 3;
       const di = (y * sw + x) * 3;
       crop.data[di] = img.data[si];
       crop.data[di + 1] = img.data[si + 1];
