@@ -43,6 +43,12 @@ function sampleTimes(duration: number, intervalSec: number, maxFrames: number): 
  * keeping every scanned frame on disk. Returns null on failure.
  */
 export async function grabFrameImage(videoPath: string, t: number, outPath: string): Promise<RawImage | null> {
+  // generateFaceFrameArgs passes no -y, so a pre-existing output file would
+  // make ffmpeg stop at an overwrite prompt: always start from a clean path
+  // and never decode a stale file after a failed extraction.
+  try {
+    fs.rmSync(outPath, { force: true });
+  } catch (err) { /* a missing file is fine */ }
   try {
     await runFfmpeg(generateFaceFrameArgs(videoPath, t, 1280, outPath));
   } catch (err) {
