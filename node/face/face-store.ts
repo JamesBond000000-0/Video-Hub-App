@@ -159,11 +159,34 @@ export class FaceStore {
     this.setVideo(hash, 'error', frameCount, [], error);
   }
 
+  /** Person IDs per video hash, derived from the faces' personId (§6.5 cache source). */
+  personsByVideo(): Record<string, string[]> {
+    const out: Record<string, string[]> = {};
+    if (this.modelMismatch) {
+      return out;
+    }
+    Object.keys(this.index.videos).forEach((hash) => {
+      const ids = new Set<string>();
+      this.index.videos[hash].faces.forEach((face) => {
+        if (face.personId) {
+          ids.add(face.personId);
+        }
+      });
+      if (ids.size > 0) {
+        const list: string[] = [];
+        ids.forEach((id) => list.push(id));
+        out[hash] = list.sort();
+      }
+    });
+    return out;
+  }
+
   payload(): FaceIndexPayload {
     return {
       index: FaceStore.hasData(this.facesDir) || Object.keys(this.index.videos).length > 0 ? this.index : null,
       modelMismatch: this.modelMismatch,
       stats: computeFaceStats(this.modelMismatch ? null : this.index),
+      personsByVideo: this.personsByVideo(),
     };
   }
 

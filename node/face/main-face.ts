@@ -25,6 +25,22 @@ export function getFaceModelsRoot(): string {
   return path.join(app.getPath('userData'), 'face-models');
 }
 
+// genderage.onnx ships only in the buffalo_l pack (design Appendix A), so
+// the light pack borrows the quality pack's copy for attribute estimation.
+export function getGenderageModelPath(settings: FaceSettings): string {
+  const own = path.join(getFaceModelsRoot(), settings.modelPack, 'genderage.onnx');
+  if (fs.existsSync(own)) {
+    return own;
+  }
+  if (settings.modelPack !== 'quality') {
+    const borrowed = path.join(getFaceModelsRoot(), 'quality', 'genderage.onnx');
+    if (fs.existsSync(borrowed)) {
+      return borrowed;
+    }
+  }
+  return '';
+}
+
 export function getFaceModelStatus(settings: FaceSettings): FaceModelStatus {
   const info = FACE_MODEL_PACKS[settings.modelPack];
   const modelsDir = path.join(getFaceModelsRoot(), settings.modelPack);
@@ -32,12 +48,15 @@ export function getFaceModelStatus(settings: FaceSettings): FaceModelStatus {
     name,
     present: fs.existsSync(path.join(modelsDir, name)),
   }));
+  const genderagePath = getGenderageModelPath(settings);
   return {
     pack: settings.modelPack,
     modelId: info.modelId,
     modelsDir,
     files,
     ready: files.every((f) => f.present),
+    genderagePath,
+    genderagePresent: genderagePath !== '',
   };
 }
 

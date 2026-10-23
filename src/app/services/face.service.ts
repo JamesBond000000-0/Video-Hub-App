@@ -34,7 +34,7 @@ export class FaceService {
   modelStatus: FaceModelStatus = null;
   faceIndex: FaceIndexFile = null;
   modelMismatch = false;
-  stats: FaceStats = { scannedVideos: 0, videosWithFaces: 0, totalFaces: 0, totalGroups: 0 };
+  stats: FaceStats = { scannedVideos: 0, videosWithFaces: 0, totalFaces: 0, totalGroups: 0, totalPersons: 0 };
 
   private initialized = false;
 

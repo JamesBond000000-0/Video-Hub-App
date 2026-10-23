@@ -39,6 +39,8 @@ export interface FaceModelStatus {
   modelsDir: string;              // <userData>/face-models/<pack>/ (design D2)
   files: FaceModelFileStatus[];   // files the user must place in modelsDir
   ready: boolean;                 // all required files present
+  genderagePath: string;          // resolved genderage.onnx path ('' when not found)
+  genderagePresent: boolean;      // genderage.onnx found (needed only for §5.8 attributes)
 }
 
 export interface FaceRecord {
@@ -50,6 +52,26 @@ export interface FaceRecord {
   embeddingIdx: number;           // offset into embeddings.bin (idx * 2048 bytes)
   groupId: number;                // within-video group (§5.5); -1 = ungrouped
   representative: boolean;        // highest-quality face of its within-video group
+  personId?: string;              // global cluster (§5.6); absent until clustered
+}
+
+// Person-level attribute aggregates (§5.8). Only aggregates are ever stored;
+// per-face estimates exist only transiently inside the worker.
+export interface PersonAttributes {
+  sex: 'M' | 'F';                 // majority vote over the person's samples
+  sexAgreement: number;           // share of samples agreeing with the vote (0..1)
+  ageMedian: number;              // median estimated age (an estimate, ±10y class)
+  sampleCount: number;            // number of faces sampled for the aggregate
+}
+
+export interface PersonRecord {
+  personId: string;               // "p000001", ... (stable across re-clustering)
+  name: string;                   // user-assigned name; '' = unnamed
+  representativeFaceId: string;   // faceId of the person's representative face
+  videoHashes: string[];          // videos this person appears in (sorted)
+  faceCount: number;              // total faces across all of the person's groups
+  hidden: boolean;                // hidden from the sidebar / person list
+  attributes?: PersonAttributes;  // present only when attributes are enabled and computed
 }
 
 export interface FaceVideoEntry {
@@ -65,13 +87,18 @@ export interface FaceIndexFile {
   modelId: string;
   clusterThreshold: number;
   videos: Record<string, FaceVideoEntry>; // key: ImageElement.hash
-  persons: unknown[];                     // Phase 2 (global clustering) fills this
+  persons: PersonRecord[];                // global clustering result (§5.6)
+  nextPersonSeq?: number;                 // next free person number (IDs never reused)
 }
 
 export interface FaceIndexPayload {
   index: FaceIndexFile | null;    // null when no face data exists yet
   modelMismatch: boolean;         // index was built with a different model pack
   stats: FaceStats;
+  // Derived cache for the .vha2 `ImageElement.persons` field (§6.5):
+  // video hash -> person IDs appearing in it. Empty when there is no
+  // (valid) face index, in which case the renderer clears the cache.
+  personsByVideo: Record<string, string[]>;
 }
 
 export interface FaceStats {
@@ -79,6 +106,7 @@ export interface FaceStats {
   videosWithFaces: number;
   totalFaces: number;
   totalGroups: number;
+  totalPersons: number;
 }
 
 // One scanned face as returned by the worker (embedding not yet persisted)
@@ -125,14 +153,16 @@ export function emptyFaceIndex(modelId: string, clusterThreshold: number): FaceI
     clusterThreshold,
     videos: {},
     persons: [],
+    nextPersonSeq: 1,
   };
 }
 
 export function computeFaceStats(index: FaceIndexFile | null): FaceStats {
-  const stats: FaceStats = { scannedVideos: 0, videosWithFaces: 0, totalFaces: 0, totalGroups: 0 };
+  const stats: FaceStats = { scannedVideos: 0, videosWithFaces: 0, totalFaces: 0, totalGroups: 0, totalPersons: 0 };
   if (!index) {
     return stats;
   }
+  stats.totalPersons = (index.persons || []).length;
   Object.keys(index.videos).forEach((hash) => {
     const entry = index.videos[hash];
     if (entry.status === 'error') {
@@ -152,4 +182,60 @@ export function computeFaceStats(index: FaceIndexFile | null): FaceStats {
     }
   });
   return stats;
+}
+
+// ---------------------------------------------------------------------------
+// Attribute estimation (§5.8): pure helpers shared by the worker (which runs
+// the model) and the main process (which selects the samples). Per-face
+// estimates are transient samples; only the aggregates below are persisted.
+// ---------------------------------------------------------------------------
+
+export interface AttributeSample {
+  sex: 'M' | 'F';
+  age: number;
+}
+
+/** Top-`limit` faces of one (video, group) by quality (§5.8 sample rule). */
+export function selectGroupSamples<T extends { quality: number }>(faces: T[], limit: number): T[] {
+  return [...faces].sort((a, b) => b.quality - a.quality).slice(0, Math.max(0, limit));
+}
+
+/** Aggregate per-face samples into the person-level record (§5.8). */
+export function aggregateAttributes(samples: AttributeSample[]): PersonAttributes | undefined {
+  if (samples.length === 0) {
+    return undefined;
+  }
+  const ages = samples.map((s) => s.age).sort((a, b) => a - b);
+  const mid = Math.floor(ages.length / 2);
+  const ageMedian = ages.length % 2 === 1 ? ages[mid] : Math.round((ages[mid - 1] + ages[mid]) / 2);
+  const fCount = samples.filter((s) => s.sex === 'F').length;
+  const sex: 'M' | 'F' = fCount * 2 >= samples.length ? 'F' : 'M';
+  const majority = Math.max(fCount, samples.length - fCount);
+  return {
+    sex,
+    sexAgreement: Math.round((majority / samples.length) * 100) / 100,
+    ageMedian,
+    sampleCount: samples.length,
+  };
+}
+
+// One sample face for the worker's attribute job: the worker re-extracts
+// this frame from the video and runs genderage on it (reference input path;
+// the stored aligned thumbnails measurably degrade the estimates).
+export interface FaceAttributeSampleRequest {
+  faceId: string;
+  videoPath: string;
+  t: number;                      // appearance time (seconds)
+  bbox: [number, number, number, number]; // relative x, y, w, h (0..1 of frame)
+}
+
+export interface FaceAttributesJob {
+  facesDir: string;               // <hub folder>/faces (temp frame location)
+  genderageModelPath: string;
+  persons: { personId: string; faces: FaceAttributeSampleRequest[] }[];
+}
+
+export interface FaceAttributesResult {
+  results: { personId: string; attributes: PersonAttributes }[];
+  error?: string;
 }
