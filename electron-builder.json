@@ -64,6 +64,13 @@
   },
   "linux": {
     "icon": "src/assets/icons.icns",
+    "asar": true,
+    "asarUnpack": [
+      "../node_modules/ffmpeg-static",
+      "../node_modules/node-ffprobe-installer",
+      "../node_modules/onnxruntime-node",
+      "../node_modules/sharp"
+    ],
     "target": [
       "AppImage"
     ]
