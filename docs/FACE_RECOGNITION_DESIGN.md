@@ -515,7 +515,11 @@ hub 単位の設定として `FinalObject` に `screenshotSettings` と並べて
 
 速度（CPU、実施環境を記録）:
 
+実測（2026-10-23、Phase 0 スパイク）: この VM（AMD EPYC 9D25、2 vCPU、Node v24.22.1、onnxruntime-node 1.30.0）での中央値。検出は 1280×886 の画像を det_size 640 で end-to-end、認識は顔あたり。秒/動画は 30 フレーム/動画・平均1顔/フレームの換算。詳細は `tools/face-spike/RESULTS.md`。
+
 | 構成 | 検出 ms/frame | 認識 ms/face | 秒 / 動画（平均） | 1000 動画換算 |
 |---|---|---|---|---|
-| quality | | | | |
-| light | | | | |
+| quality | 294.1 | 118.1 | 12.37 | 3.44 時間 |
+| light | 49.4 | 37.1 | 2.60 | 0.72 時間 |
+
+（参考）genderage は両構成とも 1.7 ms/face 程度で、属性推定の追加コストは無視できる。
