@@ -2,8 +2,9 @@
 
 - 対象: `JamesBond000000-0/Video-Hub-App`（Video Hub App 3、v3.3.0）
 - 基準コミット: main `0340da6366b0c7d6309d7df08338e1abfa5e4b16`（2026-10-23 時点で実コードを確認）
-- 状態: 設計のみ。未実装
+- 状態: Phase 0（スパイク）完了、Phase 1（検出＋顔サムネイルの統合）完了。Phase 2 以降は未実装
 - 改訂: 2026-10-23 属性推定（年齢・性別）を任意機能として追加（§5.8、ユーザー決定）
+- 改訂: 2026-10-23 Phase 1 完了を記録し、D1 / D2 / D6 を決定済みに更新（詳細は tools/face-spike/PHASE1_RESULTS.md）
 - 前提: **個人用 fork で、有償配布はしない**。この前提がモデルライセンスの判断（§3.3）を左右するため、前提が変わる場合は §3 から見直すこと
 
 ---
@@ -418,6 +419,7 @@ hub 単位の設定として `FinalObject` に `screenshotSettings` と並べて
 - faceQueue、face-worker、face-store、設定（`enabled` / モデル配置）、進捗表示
 - 動画詳細への顔ストリップ表示まで。**分類はまだ入れない**
 - 受け入れ: §10 のキュー統合とパッケージング確認を通過。有効化 OFF のとき既存動作と差分ゼロ
+- **完了（2026-10-23）**: 実装と検証の詳細は `tools/face-spike/PHASE1_RESULTS.md`。index スキーマには動画内グループの `groupId` / `representative` を §5.5 の統合結果として追加した（全体クラスタリングと personId は Phase 2 のまま）
 
 ### Phase 2: 分類 + 人物 UI
 
@@ -466,12 +468,12 @@ hub 単位の設定として `FinalObject` に `screenshotSettings` と並べて
 
 | ID | 論点 | 推奨 | 決め方 |
 |---|---|---|---|
-| D1 | 既定モデルパック（quality / light） | quality。ただし Phase 0 の時間基準を超えたら light | Phase 0 の実測で決定 |
-| D2 | モデルの配置方法（初回ダウンロード / 手動配置 / 同梱） | v1 は「設定画面に配置先と手順を表示し、取得スクリプトで配置」。同梱はしない | Phase 1 着手時に決定 |
+| D1 | 既定モデルパック（quality / light） | quality。ただし Phase 0 の時間基準を超えたら light | **決定済み: quality**（Phase 0 実測 3.44 時間/1000 動画が基準 8 時間以内だったため） |
+| D2 | モデルの配置方法（初回ダウンロード / 手動配置 / 同梱） | v1 は「設定画面に配置先と手順を表示し、取得スクリプトで配置」。同梱はしない | **決定済み: 推奨どおり**（同梱せず `<userData>/face-models/<パック名>/` に手動配置。設定画面に配置先・必要ファイル・配置状態を表示。自動ダウンロードは実装しない） |
 | D3 | 顔サムネイルの保存範囲（全顔 aligned + 代表 crop） | §5.3 の 2 種方式（容量見積もり済み） | Phase 0 で実容量を見て確定 |
 | D4 | `ImageElement.persons` を持つか、index からの導出のみにするか | キャッシュとして持つ（フィルタの高速化）。正は index | Phase 2 着手時に決定 |
 | D5 | クラスタリング閾値 `T_in` / `T_global` の最終値 | **決定済み（2026-10-23）: `T_in` = 0.50、`T_global` = 0.50**。スイープ実測で 0.45 では混入 1 件が残り、0.50 から混入ゼロ（付録 C、`tools/face-spike/CLUSTER_RESULTS.md`） | 決定済み |
-| D6 | linux の asar 扱い（§9.3） | Phase 1 で実機確認し、必要なら単独コミットで変更 | Phase 1 で決定 |
+| D6 | linux の asar 扱い（§9.3） | Phase 1 で実機確認し、必要なら単独コミットで変更 | **決定済み**（Phase 1 で確認: electron-builder 26 では linux も asar 既定 true。linux にも asar + asarUnpack を明示した。詳細は PHASE1_RESULTS.md） |
 | D7 | 属性推定（年齢・性別）を入れるか | **決定済み（2026-10-23）: 任意機能として追加**。既定オフ、人物単位の集約値のみ保存・表示（§5.8） | 決定済み |
 
 ---
