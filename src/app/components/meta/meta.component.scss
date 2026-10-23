@@ -166,3 +166,31 @@ textarea {
   display: inline-block;
   margin-left: 20px;
 }
+
+.face-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+
+  .face-strip-item {
+    align-items: center;
+    display: flex;
+    flex-direction: column;
+
+    img {
+      border-radius: 4px;
+      object-fit: cover;
+    }
+
+    .face-strip-times {
+      font-size: 10px;
+      margin-top: 2px;
+      max-width: 72px;
+      opacity: 0.75;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+  }
+}

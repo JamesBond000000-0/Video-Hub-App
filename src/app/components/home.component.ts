@@ -12,6 +12,7 @@ import { VirtualScrollerComponent } from '@iharbeck/ngx-virtual-scroller';
 // Services
 import { AutoTagsSaveService } from './tags-auto/tags-save.service';
 import { FilePathService } from './views/file-path.service';
+import { FaceService, DEFAULT_FACE_SETTINGS } from '../services/face.service';
 import { ImageElementService } from '../services/image-element.service';
 import { ManualTagsService } from './tags-manual/manual-tags.service';
 import { ModalService } from './modal/modal.service';
@@ -27,7 +28,7 @@ import { SortOrderComponent } from './sort-order/sort-order.component';
 
 // Interfaces
 import type { ContextMenuCoordinate } from '../../../interfaces/shared-interfaces';
-import type { FinalObject, ImageElement, ScreenshotSettings, ResolutionString } from '../../../interfaces/final-object.interface';
+import type { FinalObject, ImageElement, ScreenshotSettings, FaceSettings, ResolutionString } from '../../../interfaces/final-object.interface';
 import type { ImportStage } from '../../../node/main-support';
 import type { ServerDetails } from './statistics/statistics.component';
 import type { RemoteSettings, SettingsButtonSavedProperties, SettingsObject } from '../../../interfaces/settings-object.interface';
@@ -286,6 +287,8 @@ export class HomeComponent implements OnInit, AfterViewInit {
     n: 3,
   };
 
+  currentFaceSettings: FaceSettings = { ...DEFAULT_FACE_SETTINGS };
+
   // ========================================================================
   // Miscellaneous variables
   // ------------------------------------------------------------------------
@@ -397,6 +400,7 @@ export class HomeComponent implements OnInit, AfterViewInit {
     private http: HttpClient,
     public autoTagsSaveService: AutoTagsSaveService,
     public cd: ChangeDetectorRef,
+    public faceService: FaceService,
     public filePathService: FilePathService,
     public imageElementService: ImageElementService,
     public manualTagsService: ManualTagsService,
@@ -414,6 +418,8 @@ export class HomeComponent implements OnInit, AfterViewInit {
   ngOnInit() {
     this.translate.setDefaultLang('en');
     this.changeLanguage('en');
+
+    this.faceService.initialize();
 
     // this.modalService.openWelcomeMessage(); // WIP
 
@@ -713,7 +719,9 @@ export class HomeComponent implements OnInit, AfterViewInit {
       }
 
       const percentProgress: number = Math.round(100 * current / total);
-      this.progressString = 'loading - ' + percentProgress + '%';
+      this.progressString = stage === 'scanningFaces'
+        ? 'scanning faces ' + current + '/' + total + ' - ' + percentProgress + '%'
+        : 'loading - ' + percentProgress + '%';
       this.extractionPercent = percentProgress;
 
       this.cd.detectChanges(); // seems needed to update the donut
@@ -735,6 +743,10 @@ export class HomeComponent implements OnInit, AfterViewInit {
       this.imageElementService.finalArrayNeedsSaving = false;
 
       this.currentScreenshotSettings = finalObject.screenshotSettings;
+
+      this.currentFaceSettings = { ...DEFAULT_FACE_SETTINGS, ...(finalObject.faceSettings || {}) };
+      this.faceService.requestModelStatus();
+      this.faceService.requestIndex();
 
       this.appState.currentVhaFile = pathToFile;
       this.appState.selectedOutputFolder = outputFolderPath;
@@ -1137,6 +1149,7 @@ export class HomeComponent implements OnInit, AfterViewInit {
         numOfFolders: this.appState.numOfFolders,
         removeTags: this.autoTagsSaveService.getRemoveTags(),
         screenshotSettings: this.currentScreenshotSettings,
+        faceSettings: this.currentFaceSettings,
         tagColors: this.manualTagsService.getTagColors(),
         version: 3,
       };
@@ -1144,6 +1157,22 @@ export class HomeComponent implements OnInit, AfterViewInit {
     } else {
       return null;
     }
+  }
+
+  /**
+   * Face settings were changed in the Settings modal:
+   * mark the hub as needing saving and sync the settings to the main process
+   */
+  public onFaceSettingsChanged(): void {
+    this.imageElementService.finalArrayNeedsSaving = true;
+    this.faceService.sendSettings(this.currentFaceSettings);
+  }
+
+  /**
+   * Manual face scan requested from the Settings modal
+   */
+  public onFaceScanRequested(): void {
+    this.faceService.requestScanAll(this.imageElementService.imageElements);
   }
 
   /**

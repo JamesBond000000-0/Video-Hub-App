@@ -185,4 +185,16 @@
   >{{ video.notes }}</textarea>
 }
 
+<!-- Face strip: representative faces of this video (nothing renders without face data) -->
+@if (faceGroups().length > 0) {
+  <div class="face-strip">
+    @for (group of faceGroups(); track group.cropPath) {
+      <div class="face-strip-item">
+        <img [src]="group.cropPath" width="48" height="48" alt="">
+        <span class="face-strip-times">{{ group.timesLabel }}</span>
+      </div>
+    }
+  </div>
+}
+
 </div>

@@ -41,6 +41,24 @@ export class FilePathService {
   }
 
   /**
+   * Build the browser-friendly path to a face display crop
+   * (faces/crops/<faceId>.jpg inside the hub folder)
+   * @param folderPath - path to where `vha-folder` is stored
+   * @param hubName    - name of hub (to pick the correct `vha-folder` name)
+   * @param faceId     - face identifier from the face index
+   */
+  createFaceCropPath(folderPath: string, hubName: string, faceId: string): string {
+    return 'file://' + path.normalize(path.join(
+      folderPath,
+      'vha-' + hubName,
+      'faces',
+      'crops',
+      faceId + '.jpg'
+    )).replace(/\\\\/g, '/')
+      .replace(/[ \\(\\)]/g, (match) => { return this.replaceMap[match]; });
+  }
+
+  /**
    * return file name without extension
    * e.g. `video.mp4` => `video`
    */

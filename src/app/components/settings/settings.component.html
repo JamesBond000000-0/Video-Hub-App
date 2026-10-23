@@ -212,6 +212,69 @@
 
     </div>
 
+    <!-- FACE RECOGNITION -->
+
+    <span class="setting-heading">
+      {{ 'SETTINGS.faceHeading' | translate }}
+    </span>
+
+  @if (faceSettings(); as face) {
+    <div class="face-settings">
+
+      <label class="face-toggle">
+        <input type="checkbox" [checked]="face.enabled" (change)="toggleFaceEnabled($event)">
+        {{ 'SETTINGS.faceEnable' | translate }}
+      </label>
+
+      <label class="face-toggle">
+        <input type="checkbox" [checked]="face.autoScanNew" (change)="toggleFaceAutoScan($event)">
+        {{ 'SETTINGS.faceAutoScan' | translate }}
+      </label>
+
+      <div class="face-pack-row">
+        <span>{{ 'SETTINGS.faceModelPack' | translate }}</span>
+        <select class="language-drop-down monospace" [value]="face.modelPack" (change)="changeFaceModelPack($event)">
+          <option value="quality">{{ 'SETTINGS.facePackQuality' | translate }}</option>
+          <option value="light">{{ 'SETTINGS.facePackLight' | translate }}</option>
+        </select>
+      </div>
+
+    @if (faceModelStatus(); as status) {
+      <div class="face-model-status">
+        <div>
+          {{ (status.ready ? 'SETTINGS.faceModelsReady' : 'SETTINGS.faceModelsMissing') | translate }}
+        </div>
+        <div class="monospace face-model-path">{{ status.modelsDir }}</div>
+        <ul class="face-model-files">
+          @for (file of status.files; track file.name) {
+            <li>{{ file.present ? '✓' : '✗' }} {{ file.name }}</li>
+          }
+        </ul>
+        <div class="face-model-note">{{ 'SETTINGS.faceModelsNote' | translate }}</div>
+      </div>
+    }
+
+    @if (faceModelMismatch()) {
+      <div class="face-model-note">{{ 'SETTINGS.faceModelMismatch' | translate }}</div>
+    }
+
+    @if (faceStats(); as stats) {
+      <div class="face-stats">
+        {{ 'SETTINGS.faceStats' | translate: { videos: stats.scannedVideos, faces: stats.totalFaces } }}
+      </div>
+    }
+
+      <button
+        class="defaultSettingsButton"
+        [disabled]="!face.enabled || !faceModelStatus()?.ready"
+        (click)="faceScanRequested.emit()"
+      >
+        {{ 'SETTINGS.faceScanNow' | translate }}
+      </button>
+
+    </div>
+  }
+
     <!-- ZOOM BUTTONS -->
 
     <span class="setting-heading">
