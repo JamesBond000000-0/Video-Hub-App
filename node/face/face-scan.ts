@@ -135,9 +135,11 @@ export class FaceEngine {
         }
         for (let di = 0; di < faces.length; di++) {
           const face = faces[di];
-          const w = Math.round(face.bbox[2]) - Math.round(face.bbox[0]);
-          const h = Math.round(face.bbox[3]) - Math.round(face.bbox[1]);
-          if (w < job.minFaceSizePx || h < job.minFaceSizePx) {
+          // §5.2: discard when the shorter side is below the minimum
+          // (raw float size, matching the Phase 0 spike semantics)
+          const w = face.bbox[2] - face.bbox[0];
+          const h = face.bbox[3] - face.bbox[1];
+          if (Math.min(w, h) < job.minFaceSizePx) {
             continue;
           }
           const aligned = normCrop(img, face);
