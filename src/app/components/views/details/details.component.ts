@@ -18,6 +18,9 @@ export interface YearEmission {
 export interface FaceDisplayGroup {
   cropPath: string;   // file:// URL of the representative display crop
   timesLabel: string; // appearance times, e.g. "0:12, 1:03"
+  personId: string;   // clustered person ('' when unclustered)
+  personName: string; // user-assigned person name ('' when unnamed)
+  personNumber: number; // numeric part of the person ID, for the fallback label
 }
 
 @Component({
@@ -35,6 +38,7 @@ export class DetailsComponent {
   readonly filmstripHolder = viewChild<ElementRef>('filmstripHolder');
 
   readonly filterTag = output<TagEmit>();
+  readonly filterPerson = output<string>();
   readonly videoClick = output<VideoClickEmit>();
   readonly rightClick = output<RightClickEmit>();
   readonly sheetClick = output<void>();
@@ -87,10 +91,16 @@ export class DetailsComponent {
     if (!video || !video.hash) {
       return [];
     }
-    return this.faceService.faceGroupsForVideo(video.hash).map((group) => ({
-      cropPath: this.filePathService.createFaceCropPath(this.folderPath(), this.hubName(), group.representativeFaceId),
-      timesLabel: group.times.map((t) => this.formatFaceTime(t)).join(', '),
-    }));
+    return this.faceService.faceGroupsForVideo(video.hash).map((group) => {
+      const person = group.personId ? this.faceService.personById(group.personId) : undefined;
+      return {
+        cropPath: this.filePathService.createFaceCropPath(this.folderPath(), this.hubName(), group.representativeFaceId),
+        timesLabel: group.times.map((t) => this.formatFaceTime(t)).join(', '),
+        personId: group.personId,
+        personName: person ? person.name : '',
+        personNumber: person ? this.faceService.personNumber(person) : 0,
+      };
+    });
   }
 
   private formatFaceTime(totalSeconds: number): string {

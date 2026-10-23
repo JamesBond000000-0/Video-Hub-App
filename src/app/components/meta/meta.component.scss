@@ -192,5 +192,18 @@ textarea {
       text-overflow: ellipsis;
       white-space: nowrap;
     }
+
+    .face-strip-person {
+      border: 1px solid currentColor;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 10px;
+      margin-top: 2px;
+      max-width: 72px;
+      overflow: hidden;
+      padding: 0 5px;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
   }
 }

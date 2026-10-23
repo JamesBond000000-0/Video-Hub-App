@@ -239,6 +239,34 @@
         </select>
       </div>
 
+      <label class="face-toggle">
+        <input type="checkbox" [checked]="face.attributesEnabled" (change)="toggleFaceAttributes($event)">
+        {{ 'SETTINGS.faceAttributes' | translate }}
+      </label>
+      <div class="face-model-note">{{ 'SETTINGS.faceAttributesNote' | translate }}</div>
+
+      <div class="face-pack-row">
+        <span>{{ 'SETTINGS.faceThreshold' | translate }}</span>
+        <input
+          type="number"
+          class="monospace"
+          min="0.1"
+          max="0.9"
+          step="0.05"
+          [value]="face.clusterThreshold"
+          (change)="changeFaceThreshold($event)"
+        >
+      </div>
+
+      <label class="face-toggle">
+        <input
+          type="checkbox"
+          [checked]="settingsButtons['showPersonsSidebar'].toggled"
+          (change)="toggleButton.emit('showPersonsSidebar')"
+        >
+        {{ 'SETTINGS.faceShowPersonsSidebar' | translate }}
+      </label>
+
     @if (faceModelStatus(); as status) {
       <div class="face-model-status">
         <div>
@@ -260,7 +288,13 @@
 
     @if (faceStats(); as stats) {
       <div class="face-stats">
-        {{ 'SETTINGS.faceStats' | translate: { videos: stats.scannedVideos, faces: stats.totalFaces } }}
+        {{ 'SETTINGS.faceStats' | translate: { videos: stats.scannedVideos, faces: stats.totalFaces, persons: stats.totalPersons } }}
+      </div>
+    }
+
+    @if (face.attributesEnabled && faceModelStatus(); as status) {
+      <div class="face-model-note">
+        {{ (status.genderagePresent ? 'SETTINGS.faceGenderageReady' : 'SETTINGS.faceGenderageMissing') | translate }}
       </div>
     }
 
@@ -270,6 +304,14 @@
         (click)="faceScanRequested.emit()"
       >
         {{ 'SETTINGS.faceScanNow' | translate }}
+      </button>
+
+      <button
+        class="defaultSettingsButton"
+        [disabled]="!face.enabled"
+        (click)="faceReclusterRequested.emit()"
+      >
+        {{ 'SETTINGS.faceRecluster' | translate }}
       </button>
 
     </div>

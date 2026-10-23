@@ -27,6 +27,7 @@ export class MetaComponent implements OnInit, OnDestroy {
   readonly videoNotes = viewChild<ElementRef>('videoNotes');
 
   readonly filterTag = output<TagEmit>();
+  readonly filterPerson = output<string>();
 
   @Input() video: ImageElement;
 

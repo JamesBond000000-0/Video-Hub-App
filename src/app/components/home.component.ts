@@ -289,6 +289,10 @@ export class HomeComponent implements OnInit, AfterViewInit {
 
   currentFaceSettings: FaceSettings = { ...DEFAULT_FACE_SETTINGS };
 
+  personsViewOpen = false;      // person list modal (§8.2)
+  personFilterId = '';          // person filter (§8.1); '' = off
+  private faceSettingsSnapshot: FaceSettings = { ...DEFAULT_FACE_SETTINGS };
+
   // ========================================================================
   // Miscellaneous variables
   // ------------------------------------------------------------------------
@@ -745,6 +749,8 @@ export class HomeComponent implements OnInit, AfterViewInit {
       this.currentScreenshotSettings = finalObject.screenshotSettings;
 
       this.currentFaceSettings = { ...DEFAULT_FACE_SETTINGS, ...(finalObject.faceSettings || {}) };
+      this.faceSettingsSnapshot = { ...this.currentFaceSettings };
+      this.personFilterId = '';
       this.faceService.requestModelStatus();
       this.faceService.requestIndex();
 
@@ -1161,11 +1167,20 @@ export class HomeComponent implements OnInit, AfterViewInit {
 
   /**
    * Face settings were changed in the Settings modal:
-   * mark the hub as needing saving and sync the settings to the main process
+   * mark the hub as needing saving and sync the settings to the main process.
+   * A changed clustering threshold or attributes toggle re-runs the
+   * classification (the recluster trigger points of §5.6 / §5.8).
    */
   public onFaceSettingsChanged(): void {
     this.imageElementService.finalArrayNeedsSaving = true;
     this.faceService.sendSettings(this.currentFaceSettings);
+    const needsRecluster =
+      this.faceSettingsSnapshot.clusterThreshold !== this.currentFaceSettings.clusterThreshold ||
+      this.faceSettingsSnapshot.attributesEnabled !== this.currentFaceSettings.attributesEnabled;
+    this.faceSettingsSnapshot = { ...this.currentFaceSettings };
+    if (needsRecluster && this.currentFaceSettings.enabled) {
+      this.faceService.requestRecluster(this.imageElementService.imageElements);
+    }
   }
 
   /**
@@ -1173,6 +1188,23 @@ export class HomeComponent implements OnInit, AfterViewInit {
    */
   public onFaceScanRequested(): void {
     this.faceService.requestScanAll(this.imageElementService.imageElements);
+  }
+
+  /**
+   * Manual re-clustering requested from the Settings modal
+   */
+  public onFaceReclusterRequested(): void {
+    this.faceService.requestRecluster(this.imageElementService.imageElements);
+  }
+
+  /**
+   * A person was clicked (sidebar, person list, or a video's face strip):
+   * filter the gallery to that person's videos; clicking the active
+   * person again clears the filter.
+   */
+  public personFilterClicked(personId: string): void {
+    this.personFilterId = this.personFilterId === personId ? '' : personId;
+    this.personsViewOpen = false;
   }
 
   /**
@@ -2574,6 +2606,9 @@ export class HomeComponent implements OnInit, AfterViewInit {
    * It resets all filter arrays, bounds, and toggles all filter buttons off
    */
   clearAllFilters(): void {
+    // Clear the person filter
+    this.personFilterId = '';
+
     // Clear all filter arrays and bools
     this.filters.forEach((filter) => {
       filter.array = [];

@@ -1,0 +1,67 @@
+<div class="persons-view" [ngClass]="{ 'persons-dark': darkMode() }">
+
+  <div class="persons-header">
+    <span class="persons-title">{{ 'PERSONS.heading' | translate }}</span>
+    <button class="defaultSettingsButton" (click)="recluster()">
+      {{ 'PERSONS.recluster' | translate }}
+    </button>
+    @if (attributesEnabled()) {
+      <button class="defaultSettingsButton" (click)="recalcAttributes()">
+        {{ 'PERSONS.recalcAttributes' | translate }}
+      </button>
+    }
+  </div>
+
+  @if (persons().length === 0) {
+    <div class="persons-empty">
+      <div>{{ 'PERSONS.empty' | translate }}</div>
+      <button class="defaultSettingsButton" (click)="scanRequested.emit()">
+        {{ 'PERSONS.scanNow' | translate }}
+      </button>
+    </div>
+  } @else {
+    <div class="persons-grid">
+      @for (person of persons(); track person.personId) {
+        <div class="person-card" [ngClass]="{ 'person-hidden': person.hidden }">
+          <img
+            class="person-crop"
+            [src]="cropPath(person)"
+            (click)="personClicked.emit(person.personId)"
+            title="{{ 'PERSONS.filterHint' | translate }}"
+          >
+          @if (editingPersonId === person.personId) {
+            <input
+              class="person-name-input"
+              [(ngModel)]="editingName"
+              (blur)="commitEdit(person)"
+              (keydown.enter)="commitEdit(person)"
+              (keydown.escape)="editingPersonId = ''"
+              placeholder="{{ 'PERSONS.namePlaceholder' | translate }}"
+            >
+          } @else {
+            <div
+              class="person-name"
+              (click)="startEdit(person)"
+              title="{{ 'PERSONS.renameHint' | translate }}"
+            >
+              {{ person.name || ('PERSONS.unnamed' | translate: { num: faceService.personNumber(person) }) }}
+            </div>
+          }
+          <div class="person-stats">
+            {{ 'PERSONS.videosFaces' | translate: { videos: person.videoHashes.length, faces: person.faceCount } }}
+          </div>
+          @if (person.attributes) {
+            <div class="person-attributes">
+              {{ attributeLabel(person) }}
+              <span class="person-estimated">{{ 'PERSONS.estimated' | translate }}</span>
+            </div>
+          }
+          <button class="person-hide-button" (click)="toggleHidden(person)">
+            {{ (person.hidden ? 'PERSONS.unhide' : 'PERSONS.hide') | translate }}
+          </button>
+        </div>
+      }
+    </div>
+  }
+
+</div>

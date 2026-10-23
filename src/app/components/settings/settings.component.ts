@@ -38,6 +38,7 @@ export class SettingsComponent implements OnInit, OnChanges {
   readonly toggleHideButton = output<string>();
   readonly faceSettingsChanged = output<void>();
   readonly faceScanRequested = output<void>();
+  readonly faceReclusterRequested = output<void>();
 
   @Input() appState;
   readonly demo = input();
@@ -85,6 +86,25 @@ export class SettingsComponent implements OnInit, OnChanges {
     if (settings) {
       settings.autoScanNew = (event.target as HTMLInputElement).checked;
       this.faceSettingsChanged.emit();
+    }
+  }
+
+  toggleFaceAttributes(event: Event) {
+    const settings = this.faceSettings();
+    if (settings) {
+      settings.attributesEnabled = (event.target as HTMLInputElement).checked;
+      this.faceSettingsChanged.emit();
+    }
+  }
+
+  changeFaceThreshold(event: Event) {
+    const settings = this.faceSettings();
+    if (settings) {
+      const value = parseFloat((event.target as HTMLInputElement).value);
+      if (!isNaN(value)) {
+        settings.clusterThreshold = Math.min(0.9, Math.max(0.1, Math.round(value * 100) / 100));
+        this.faceSettingsChanged.emit();
+      }
     }
   }
 

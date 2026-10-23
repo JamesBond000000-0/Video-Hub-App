@@ -192,6 +192,13 @@
       <div class="face-strip-item">
         <img [src]="group.cropPath" width="48" height="48" alt="">
         <span class="face-strip-times">{{ group.timesLabel }}</span>
+        @if (group.personId) {
+          <span
+            class="face-strip-person"
+            (click)="filterPerson.emit(group.personId)"
+            title="{{ 'PERSONS.filterHint' | translate }}"
+          >{{ group.personName || ('PERSONS.unnamed' | translate: { num: group.personNumber }) }}</span>
+        }
       </div>
     }
   </div>
