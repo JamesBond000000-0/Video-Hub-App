@@ -37,7 +37,8 @@
       "../node_modules/ffmpeg-static",
       "../node_modules/node-ffprobe-installer",
       "../node_modules/onnxruntime-node",
-      "../node_modules/sharp"
+      "../node_modules/sharp",
+      "../node_modules/@img"
     ],
     "target": [
       "nsis",
@@ -59,7 +60,8 @@
       "../node_modules/ffmpeg-static",
       "../node_modules/node-ffprobe-installer",
       "../node_modules/onnxruntime-node",
-      "../node_modules/sharp"
+      "../node_modules/sharp",
+      "../node_modules/@img"
     ]
   },
   "linux": {
@@ -69,7 +71,8 @@
       "../node_modules/ffmpeg-static",
       "../node_modules/node-ffprobe-installer",
       "../node_modules/onnxruntime-node",
-      "../node_modules/sharp"
+      "../node_modules/sharp",
+      "../node_modules/@img"
     ],
     "target": [
       "AppImage"
