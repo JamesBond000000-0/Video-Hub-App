@@ -65,6 +65,34 @@ const extractSingleFrameArgs = (
 };
 
 /**
+ * Generate the ffmpeg args to extract one frame for face scanning
+ * at a particular time, scaled to at most `maxWidth` wide (design doc §5.1;
+ * the exact form was verified in the Phase 0 spike)
+ * @param pathToVideo
+ * @param timeSec    -- time offset in seconds
+ * @param maxWidth   -- cap on frame width (1280)
+ * @param savePath
+ */
+export const generateFaceFrameArgs = (
+  pathToVideo: string,
+  timeSec: number,
+  maxWidth: number,
+  savePath: string,
+): string[] => {
+
+  const args: string[] = [
+    '-ss', timeSec.toString(),
+    '-i', pathToVideo,
+    '-frames:v', '1',
+    '-vf', `scale=w='min(${maxWidth},iw)':h=-2`,
+    '-q:v', '2',
+    savePath,
+  ];
+
+  return args;
+};
+
+/**
  * Take N screenshots of a particular file
  * at particular file size
  * save as particular fileHash
