@@ -1,4 +1,4 @@
-import type { ScreenshotSettings, InputSources } from '../interfaces/final-object.interface';
+import type { ScreenshotSettings, InputSources, FaceSettings } from '../interfaces/final-object.interface';
 
 // For release, update 4 values:                                                                          <---- !!! RELEASE !!!
 //
@@ -30,6 +30,17 @@ export const GLOBALS: VhaGlobals = {
     n: 10,
   },
   additionalExtensions: [],
+  faceSettings: {
+    enabled: false,              // face scanning is opt-in
+    modelPack: 'quality',        // decision D1: quality pack is the default (Phase 0 speed measurement)
+    maxFramesPerVideo: 60,
+    sampleIntervalSec: 30,
+    minFaceSizePx: 40,
+    clusterThreshold: 0.5,       // decision D5: T_global = 0.50
+    autoScanNew: true,
+    attributesEnabled: false,    // Phase 2
+    attributeSamplesPerGroup: 5, // Phase 2
+  },
 };
 
 export interface VhaGlobals {
@@ -42,6 +53,7 @@ export interface VhaGlobals {
   macVersion: boolean;
   readyToQuit: boolean;
   screenshotSettings: ScreenshotSettings;
+  faceSettings: FaceSettings;
   selectedOutputFolder: string;
   selectedSourceFolders: InputSources;
   settingsPath: string;

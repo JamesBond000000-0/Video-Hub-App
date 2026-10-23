@@ -23,6 +23,7 @@ export interface FinalObject {
   numOfFolders: number;          // number of folders - is always re-counted when app starts
   removeTags: string[];          // tags to remove
   screenshotSettings: ScreenshotSettings;
+  faceSettings?: FaceSettings; // optional so pre-existing .vha2 files still parse; defaults are filled in on open
   tagColors?: Record<string, string>; // lookup table for tag name to color mapping
   version: number;               // version of this vha file
 }
@@ -106,4 +107,20 @@ export interface ScreenshotSettings {
   fixed: boolean;
   height: AllowedScreenshotHeight;
   n: number;
+}
+
+export type FaceModelPack = 'quality' | 'light';
+
+// Face recognition settings (design doc: docs/FACE_RECOGNITION_DESIGN.md §7).
+// Saved inside the .vha2 file; face data itself lives in the hub's faces/ folder.
+export interface FaceSettings {
+  enabled: boolean;                // opt-in: face scanning (default off)
+  modelPack: FaceModelPack;        // 'quality' = buffalo_l (det_10g + w600k_r50); 'light' = buffalo_sc (det_500m + w600k_mbf)
+  maxFramesPerVideo: number;       // cap for the §5.1 frame sampling
+  sampleIntervalSec: number;       // base interval for the §5.1 frame sampling
+  minFaceSizePx: number;           // faces smaller than this are discarded (§5.2)
+  clusterThreshold: number;        // global clustering threshold T_global (§5.6, used from Phase 2)
+  autoScanNew: boolean;            // scan faces automatically after thumbnail extraction
+  attributesEnabled: boolean;      // age/gender estimation (§5.8, used from Phase 2)
+  attributeSamplesPerGroup: number; // samples per (video, group) for attributes (§5.8, Phase 2)
 }
