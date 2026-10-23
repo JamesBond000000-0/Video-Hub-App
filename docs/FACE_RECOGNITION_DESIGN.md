@@ -478,13 +478,18 @@ hub 単位の設定として `FinalObject` に `screenshotSettings` と並べて
 
 ## 付録 A. モデルファイル台帳（Phase 0 で記入）
 
-| ファイル | 取得元 | サイズ | SHA256 |
+取得元はいずれも InsightFace 公式 GitHub リリース v0.7
+（`https://github.com/deepinsight/insightface/releases/download/v0.7/buffalo_l.zip` および `buffalo_sc.zip`、2026-10-23 取得）。
+
+| ファイル | 取得元 | サイズ (bytes) | SHA256 |
 |---|---|---|---|
-| `det_10g.onnx` | （Phase 0 で記録） | 約 17MB | |
-| `w600k_r50.onnx` | （Phase 0 で記録） | 約 166MB | |
-| `det_500m.onnx` | （Phase 0 で記録） | 約 2.5MB | |
-| `w600k_mbf.onnx` | （Phase 0 で記録） | 約 13MB | |
-| `genderage.onnx`（任意機能用、両パック共通） | （Phase 0 で記録） | 数 MB | |
+| `det_10g.onnx` | buffalo_l.zip | 16,923,827 | `5838f7fe053675b1c7a08b633df49e7af5495cee0493c7dcf6697200b85b5b91` |
+| `w600k_r50.onnx` | buffalo_l.zip | 174,383,860 | `4c06341c33c2ca1f86781dab0e829f88ad5b64be9fba56e56bc9ebdefc619e43` |
+| `det_500m.onnx` | buffalo_sc.zip | 2,524,817 | `5e4447f50245bbd7966bd6c0fa52938c61474a04ec7def48753668a9d8b4ea3a` |
+| `w600k_mbf.onnx` | buffalo_sc.zip | 13,616,099 | `9cc6e4a75f0e2bf0b1aed94578f144d15175f357bdc05e815e5c4a02b319eb4f` |
+| `genderage.onnx`（任意機能用） | buffalo_l.zip のみ | 1,322,532 | `4fde69b1c810857b88c64a335084f1c3fe8f01246c9a191b48c7bb756d6652fb` |
+
+注意: `genderage.onnx` は buffalo_sc.zip には**含まれていない**（buffalo_sc は det + rec の2ファイルのみ）。light 構成で属性推定も使う場合は buffalo_l（または buffalo_s）側の genderage を併用する。スパイクでは buffalo_l のものを両構成で使う。
 
 ## 付録 B. ArcFace 位置合わせテンプレート（112×112、5 点）
 
