@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 
+import type { ClusterizeResult } from './cluster';
 import {
   computeFaceStats,
   emptyFaceIndex,
@@ -9,6 +10,7 @@ import {
   type FaceIndexPayload,
   type FaceRecord,
   type FaceVideoEntry,
+  type PersonAttributes,
   type ScannedFace,
 } from './face-types';
 
@@ -157,6 +159,103 @@ export class FaceStore {
   /** Record a failed scan without embeddings. */
   setVideoError(hash: string, frameCount: number, error: string): void {
     this.setVideo(hash, 'error', frameCount, [], error);
+  }
+
+  /** Read one stored embedding (512 float32 at `embeddingIdx * 2048`). */
+  readEmbedding(embeddingIdx: number): Float32Array {
+    const binPath = FaceStore.embeddingsPath(this.facesDir);
+    const buffer = Buffer.alloc(EMBEDDING_BYTES);
+    const fd = fs.openSync(binPath, 'r');
+    try {
+      fs.readSync(fd, buffer, 0, EMBEDDING_BYTES, embeddingIdx * EMBEDDING_BYTES);
+    } finally {
+      fs.closeSync(fd);
+    }
+    const out = new Float32Array(EMBEDDING_BYTES / 4);
+    for (let i = 0; i < out.length; i++) {
+      out[i] = buffer.readFloatLE(i * 4);
+    }
+    return out;
+  }
+
+  /**
+   * Apply a full re-clustering (§5.6): rewrite every face's personId from
+   * the assignment (faces absent from the map lose theirs) and replace the
+   * persons array.
+   */
+  applyClustering(result: ClusterizeResult, threshold: number): void {
+    if (this.modelMismatch) {
+      throw new Error('face index was built with a different model pack; reset required before writing');
+    }
+    Object.keys(this.index.videos).forEach((hash) => {
+      const entry = this.index.videos[hash];
+      if (!entry) {
+        return;
+      }
+      entry.faces.forEach((face) => {
+        const personId = result.facePerson.get(face.faceId);
+        if (personId) {
+          face.personId = personId;
+        } else if (face.personId) {
+          delete face.personId;
+        }
+      });
+    });
+    this.index.persons = result.persons;
+    this.index.clusterThreshold = threshold;
+    this.index.nextPersonSeq = result.nextPersonSeq;
+    this.saveIndex();
+  }
+
+  renamePerson(personId: string, name: string): boolean {
+    const person = (this.index.persons || []).filter((p) => p.personId === personId)[0];
+    if (!person) {
+      return false;
+    }
+    person.name = name;
+    this.saveIndex();
+    return true;
+  }
+
+  setPersonHidden(personId: string, hidden: boolean): boolean {
+    const person = (this.index.persons || []).filter((p) => p.personId === personId)[0];
+    if (!person) {
+      return false;
+    }
+    person.hidden = hidden;
+    this.saveIndex();
+    return true;
+  }
+
+  /** Store freshly computed attribute aggregates (persons not listed keep theirs). */
+  setPersonsAttributes(results: { personId: string; attributes: PersonAttributes }[]): void {
+    const byId = new Map<string, PersonAttributes>();
+    results.forEach((r) => byId.set(r.personId, r.attributes));
+    let changed = false;
+    (this.index.persons || []).forEach((person) => {
+      const attributes = byId.get(person.personId);
+      if (attributes) {
+        person.attributes = attributes;
+        changed = true;
+      }
+    });
+    if (changed) {
+      this.saveIndex();
+    }
+  }
+
+  /** Remove all attribute aggregates (attributes feature turned off). */
+  clearPersonsAttributes(): void {
+    let changed = false;
+    (this.index.persons || []).forEach((person) => {
+      if (person.attributes) {
+        delete person.attributes;
+        changed = true;
+      }
+    });
+    if (changed) {
+      this.saveIndex();
+    }
   }
 
   /** Person IDs per video hash, derived from the faces' personId (§6.5 cache source). */

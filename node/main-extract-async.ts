@@ -15,7 +15,7 @@ import type { ImageElement, ImageElementPlus } from '../interfaces/final-object.
 import { acceptableFiles } from './main-filenames';
 import { extractAll } from './main-extract';
 import { sendCurrentProgress, insertTemporaryFieldsSingle, extractMetadataAsync, cleanUpFileName } from './main-support';
-import { notifyFaceIndexUpdated, scanVideoFaces } from './face/main-face';
+import { reclusterAfterScan, scanVideoFaces } from './face/main-face';
 
 export interface TempMetadataQueueObject {
   fullPath: string;
@@ -140,7 +140,9 @@ export function resetAllQueues(): void {
 
     facesDone = 0;
     faceExtractionStartTime = 0;
-    notifyFaceIndexUpdated();
+    // global clustering (+ attribute aggregation) runs after the scans;
+    // it notifies the renderer itself when the new index is ready
+    reclusterAfterScan();
     if (thumbQueue.length() === 0 && thumbQueue.running() === 0) {
       sendCurrentProgress(1, 1, 'done');
       console.log('face scan complete!');

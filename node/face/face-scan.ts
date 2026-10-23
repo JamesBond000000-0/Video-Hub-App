@@ -36,6 +36,28 @@ function sampleTimes(duration: number, intervalSec: number, maxFrames: number): 
   return times;
 }
 
+/**
+ * Extract and decode the frame at `t` seconds of a video (same ffmpeg
+ * arguments as the scan pipeline). Used by the worker's attribute job
+ * (§5.8), which re-extracts the handful of sample frames instead of
+ * keeping every scanned frame on disk. Returns null on failure.
+ */
+export async function grabFrameImage(videoPath: string, t: number, outPath: string): Promise<RawImage | null> {
+  try {
+    await runFfmpeg(generateFaceFrameArgs(videoPath, t, 1280, outPath));
+  } catch (err) {
+    return null;
+  }
+  if (!fs.existsSync(outPath)) {
+    return null;
+  }
+  try {
+    return await decodeImage(outPath);
+  } catch (err) {
+    return null;
+  }
+}
+
 function runFfmpeg(args: string[]): Promise<void> {
   return new Promise((resolve, reject) => {
     const ff = spawn(ffmpegPath, args);

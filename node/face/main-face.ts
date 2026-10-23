@@ -5,11 +5,17 @@ import * as path from 'path';
 import type { FaceSettings, ImageElement } from '../../interfaces/final-object.interface';
 import { GLOBALS } from '../main-globals';
 
+import { clusterizeIndex } from './cluster';
 import { FaceStore } from './face-store';
 import {
   FACE_MODEL_PACKS,
+  selectGroupSamples,
+  type FaceAttributeSampleRequest,
+  type FaceAttributesJob,
+  type FaceAttributesResult,
   type FaceIndexPayload,
   type FaceModelStatus,
+  type FaceRecord,
   type FaceScanJob,
   type FaceScanResult,
 } from './face-types';
@@ -103,6 +109,24 @@ let workerPack: FaceSettings['modelPack'] | null = null;
 let workerReady: Promise<void> | null = null;
 let jobCounter = 0;
 const pendingJobs = new Map<number, { resolve: (r: FaceScanResult) => void; reject: (e: Error) => void }>();
+const pendingAttributeJobs = new Map<number, { resolve: (r: FaceAttributesResult) => void; reject: (e: Error) => void }>();
+
+// Full paths of videos seen this session (from scans and renderer calls).
+// The attribute pass needs them to re-extract sample frames; videos whose
+// path is unknown are simply skipped there.
+const videoPathRegistry = new Map<string, string>();
+
+function registerVideoPaths(elements: ImageElement[] | undefined): void {
+  if (!elements) {
+    return;
+  }
+  elements.forEach((element) => {
+    const sourceFolder = GLOBALS.selectedSourceFolders[element.inputSource];
+    if (sourceFolder && sourceFolder.path) {
+      videoPathRegistry.set(element.hash, path.join(sourceFolder.path, element.partialPath, element.fileName));
+    }
+  });
+}
 
 function killWorker(): void {
   if (worker) {
@@ -115,6 +139,8 @@ function killWorker(): void {
   workerReady = null;
   pendingJobs.forEach((pending) => pending.reject(new Error('face worker stopped')));
   pendingJobs.clear();
+  pendingAttributeJobs.forEach((pending) => pending.reject(new Error('face worker stopped')));
+  pendingAttributeJobs.clear();
 }
 
 function ensureWorker(settings: FaceSettings): Promise<void> {
@@ -147,6 +173,12 @@ function ensureWorker(settings: FaceSettings): Promise<void> {
           pendingJobs.delete(message.jobId);
           pending.resolve(message.result as FaceScanResult);
         }
+      } else if (message.type === 'attributes-result') {
+        const pending = pendingAttributeJobs.get(message.jobId);
+        if (pending) {
+          pendingAttributeJobs.delete(message.jobId);
+          pending.resolve(message.result as FaceAttributesResult);
+        }
       }
     });
     child.on('exit', () => {
@@ -157,6 +189,8 @@ function ensureWorker(settings: FaceSettings): Promise<void> {
       }
       pendingJobs.forEach((pending) => pending.reject(new Error('face worker exited')));
       pendingJobs.clear();
+      pendingAttributeJobs.forEach((pending) => pending.reject(new Error('face worker exited')));
+      pendingAttributeJobs.clear();
     });
     child.postMessage({
       type: 'init',
@@ -196,6 +230,7 @@ export async function scanVideoFaces(element: ImageElement, videoFolderPath: str
   if (store.isScanned(element.hash)) {
     return;
   }
+  videoPathRegistry.set(element.hash, path.join(videoFolderPath, element.partialPath, element.fileName));
   const job: FaceScanJob = {
     videoPath: path.join(videoFolderPath, element.partialPath, element.fileName),
     duration: element.duration,
@@ -235,6 +270,127 @@ export async function scanVideoFaces(element: ImageElement, videoFolderPath: str
 }
 
 // ---------------------------------------------------------------------------
+// Global clustering (§5.6) and attribute aggregation (§5.8)
+// ---------------------------------------------------------------------------
+
+/**
+ * Re-run the global clustering over the current index. Person IDs, names
+ * and hidden flags are reconciled with the previous persons inside
+ * clusterizeIndex. When attributes are disabled, any stored aggregates
+ * are removed (the feature must leave no trace while off). Never throws.
+ */
+export async function reclusterFaces(): Promise<void> {
+  const settings: FaceSettings = GLOBALS.faceSettings;
+  if (!settings || !settings.enabled) {
+    return;
+  }
+  const store = getFaceStore();
+  if (store.modelMismatch || !FaceStore.hasData(store.facesDir)) {
+    return;
+  }
+  try {
+    const result = clusterizeIndex(store.getIndex(), (idx) => store.readEmbedding(idx), settings.clusterThreshold);
+    store.applyClustering(result, settings.clusterThreshold);
+    if (!settings.attributesEnabled) {
+      store.clearPersonsAttributes();
+    }
+    console.log('face re-clustering done:', result.persons.length, 'persons');
+  } catch (err) {
+    console.log('face re-clustering failed:', err);
+  }
+}
+
+/**
+ * Compute the person-level attribute aggregates (§5.8) in the worker and
+ * store them. Runs only when the feature is enabled and genderage.onnx
+ * is placed; (video, group)s whose video path is unknown this session
+ * are skipped. Never throws.
+ */
+export async function computeFaceAttributes(elements?: ImageElement[]): Promise<void> {
+  const settings: FaceSettings = GLOBALS.faceSettings;
+  if (!settings || !settings.enabled || !settings.attributesEnabled) {
+    return;
+  }
+  registerVideoPaths(elements);
+  const genderageModelPath = getGenderageModelPath(settings);
+  if (!genderageModelPath) {
+    console.log('face attributes skipped (genderage.onnx not placed)');
+    return;
+  }
+  const store = getFaceStore();
+  if (store.modelMismatch) {
+    return;
+  }
+  const index = store.getIndex();
+  const persons = index.persons || [];
+  if (persons.length === 0) {
+    return;
+  }
+  // sample faces per person: per (video, group), the top-N by quality
+  const jobPersons: FaceAttributesJob['persons'] = persons.map((person) => {
+    const faces: FaceAttributeSampleRequest[] = [];
+    person.videoHashes.forEach((hash) => {
+      const videoPath = videoPathRegistry.get(hash);
+      const entry = index.videos[hash];
+      if (!videoPath || !entry) {
+        return;
+      }
+      const byGroup = new Map<number, FaceRecord[]>();
+      entry.faces.forEach((face) => {
+        if (face.personId === person.personId && face.groupId >= 0) {
+          if (!byGroup.has(face.groupId)) {
+            byGroup.set(face.groupId, []);
+          }
+          byGroup.get(face.groupId).push(face);
+        }
+      });
+      byGroup.forEach((members) => {
+        selectGroupSamples(members, settings.attributeSamplesPerGroup).forEach((face) => {
+          faces.push({ faceId: face.faceId, videoPath, t: face.t, bbox: face.bbox });
+        });
+      });
+    });
+    return { personId: person.personId, faces };
+  }).filter((p) => p.faces.length > 0);
+  if (jobPersons.length === 0) {
+    return;
+  }
+  try {
+    await ensureWorker(settings);
+    const result = await new Promise<FaceAttributesResult>((resolve, reject) => {
+      const jobId = ++jobCounter;
+      pendingAttributeJobs.set(jobId, { resolve, reject });
+      if (worker) {
+        const job: FaceAttributesJob = { facesDir: store.facesDir, genderageModelPath, persons: jobPersons };
+        worker.postMessage({ type: 'attributes', jobId, job });
+      } else {
+        pendingAttributeJobs.delete(jobId);
+        reject(new Error('face worker unavailable'));
+      }
+    });
+    if (result.error) {
+      console.log('face attributes job reported:', result.error);
+    }
+    if (result.results.length > 0) {
+      store.setPersonsAttributes(result.results);
+      console.log('face attributes stored for', result.results.length, 'persons');
+    }
+  } catch (err) {
+    console.log('face attributes failed:', err);
+  }
+}
+
+/**
+ * Post-scan hook (called by the face queue drain in main-extract-async):
+ * cluster first, then aggregate attributes when the feature is on.
+ */
+export async function reclusterAfterScan(): Promise<void> {
+  await reclusterFaces();
+  await computeFaceAttributes();
+  notifyFaceIndexUpdated();
+}
+
+// ---------------------------------------------------------------------------
 // IPC (registered from main-ipc.ts)
 // ---------------------------------------------------------------------------
 
@@ -256,5 +412,33 @@ export function registerFaceIpc(ipc: Electron.IpcMain): void {
       killWorker(); // sessions for the other pack are useless; respawn lazily
     }
     event.sender.send('face-model-status-returning', getFaceModelStatus(GLOBALS.faceSettings));
+  });
+
+  // Manual re-clustering (persons view / settings). Also recomputes the
+  // attribute aggregates when the feature is enabled. The elements ride
+  // along so the attribute pass knows the video file paths.
+  ipc.on('face-recluster', async (event, elements?: ImageElement[]) => {
+    registerVideoPaths(elements);
+    await reclusterFaces();
+    await computeFaceAttributes(elements);
+    event.sender.send('face-index-returning', getFaceIndexPayload());
+  });
+
+  // Recompute only the attribute aggregates (§5.8)
+  ipc.on('face-attributes-request', async (event, elements?: ImageElement[]) => {
+    await computeFaceAttributes(elements);
+    event.sender.send('face-index-returning', getFaceIndexPayload());
+  });
+
+  ipc.on('face-rename-person', (event, personId: string, name: string) => {
+    if (getFaceStore().renamePerson(personId, (name || '').trim())) {
+      event.sender.send('face-index-returning', getFaceIndexPayload());
+    }
+  });
+
+  ipc.on('face-set-person-hidden', (event, personId: string, hidden: boolean) => {
+    if (getFaceStore().setPersonHidden(personId, !!hidden)) {
+      event.sender.send('face-index-returning', getFaceIndexPayload());
+    }
   });
 }
