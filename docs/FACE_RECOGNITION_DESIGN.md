@@ -6,6 +6,7 @@
 - 改訂: 2026-10-23 属性推定（年齢・性別）を任意機能として追加（§5.8、ユーザー決定）
 - 改訂: 2026-10-23 Phase 1 完了を記録し、D1 / D2 / D6 を決定済みに更新（詳細は tools/face-spike/PHASE1_RESULTS.md）
 - 改訂: 2026-10-24 第 3 パック lvface（LVFace-T）を追加（決定 D8、§3.2 / §14。実測比較は tools/face-spike/LVFACE_COMPARISON.md、実装検証は tools/face-spike/LVFACE_PACK_RESULTS.md）
+- 改訂: 2026-10-24 実行プロバイダ選択（CUDA / DirectML / CoreML、自動フォールバック）を追加（決定 D9、§7 / §9.1 / §14。調査と検証は tools/face-spike/GPU_PROVIDER_RESULTS.md）
 - 前提: **個人用 fork で、有償配布はしない**。この前提がモデルライセンスの判断（§3.3）を左右するため、前提が変わる場合は §3 から見直すこと
 
 ---
@@ -303,6 +304,7 @@ hub 単位の設定として `FinalObject` に `screenshotSettings` と並べて
 |---|---|---|---|
 | `enabled` | boolean | `false` | 顔スキャンの有効化（明示オプトイン） |
 | `modelPack` | `'quality' \| 'light' \| 'lvface'` | D1 で決定 | §3.2 の 3 構成（lvface は D8 で追加） |
+| `provider` | `'auto' \| 'cpu' \| 'cuda' \| 'directml' \| 'coreml'` | `'auto'` | 推論の実行プロバイダ（D9）。auto はプラットフォーム別の梯子（win32: CUDA→DirectML→CPU、linux: CUDA→CPU、darwin: CoreML→CPU）で最初に成功したものを使う。手動指定でも CPU が最終フォールバックになる。旧ファイルに項目が無い場合は `'auto'` として扱う |
 | `framesPerVideo` 上限 | number | 60 | §5.1 の本数計算の上限 |
 | `sampleIntervalSec` | number | 30 | §5.1 の間隔 |
 | `minFaceSizePx` | number | 40 | §5.2 の最小顔サイズ |
@@ -356,6 +358,7 @@ hub 単位の設定として `FinalObject` に `screenshotSettings` と並べて
 | `node/face/scrfd.ts` | SCRFD の前処理・推論・後処理（§3.4-1） |
 | `node/face/arcface.ts` | 位置合わせ（§3.4-2）と埋め込み取得 |
 | `node/face/lvface.ts` | （D8 で追加）LVFace 認識の推論。入出力契約は arcface と同一 |
+| `node/face/ort-provider.ts` | （D9 で追加）実行プロバイダの候補梯子とセッション生成（OrtSessionFactory）、実効プロバイダの記録、CUDA プロバイダライブラリの配置状態の判定。全セッション（検出・認識・属性）はここを通す |
 | `node/face/image-ops.ts` | sharp ラッパ: デコード、リサイズ、ワープ、切り抜き、保存 |
 | `node/face/cluster.ts` | 動画内統合 + 全体クラスタリング（純関数） |
 | `node/face/genderage.ts` | （任意機能用）年齢・性別推論と人物単位の集約（§5.8） |
@@ -484,6 +487,7 @@ hub 単位の設定として `FinalObject` に `screenshotSettings` と並べて
 | D6 | linux の asar 扱い（§9.3） | Phase 1 で実機確認し、必要なら単独コミットで変更 | **決定済み**（Phase 1 で確認: electron-builder 26 では linux も asar 既定 true。linux にも asar + asarUnpack を明示した。詳細は PHASE1_RESULTS.md） |
 | D7 | 属性推定（年齢・性別）を入れるか | **決定済み（2026-10-23）: 任意機能として追加**。既定オフ、人物単位の集約値のみ保存・表示（§5.8） | 決定済み |
 | D8 | 第 3 パックとして LVFace-T を追加するか | **決定済み（2026-10-24、ユーザー決定）: 追加する**。構成は検出 `det_10g.onnx`（quality と同一）+ 認識 LVFace-T、パック id は `lvface`、modelId は `lvface-t-glint360k`。根拠は LVFace 実測比較（`tools/face-spike/LVFACE_COMPARISON.md`）: 認識 64.7ms/face（ArcFace の 0.34 倍）、モデル 76.7MB、T_global = 0.50 で混入 0・動画間統合 3 組成立のため**閾値の既定は 0.50 のまま流用**（パック別の既定値は持たない）。属性推定（genderage）は入力がフレーム crop で認識埋め込みに依存しないため、lvface でも quality フォルダの `genderage.onnx` を共用してそのまま動作する | 決定済み |
+| D9 | 推論を GPU（CUDA / DirectML）で高速化するか。CUDA ライブラリの同梱範囲も含む | **決定済み（2026-10-24、ユーザー決定）: プロバイダ選択として実装する**。設定 `provider`（既定 `auto`）で、auto は win32: CUDA→DirectML→CPU、linux: CUDA→CPU、darwin: CoreML→CPU の順にセッション生成を試し、成功したものを全セッション（検出・認識・genderage）共通で使う。手動指定（`cuda` / `directml` / `coreml` / `cpu`）でも失敗時は次の候補へ落ち、最終的に CPU になる。実効プロバイダと失敗した試行はログと設定画面に表示する。**CUDA ランタイム（CUDA Toolkit 13 系のライブラリと cuDNN 9）は同梱せず、ユーザー側のインストールを前提とする**（ユーザー指示）。ORT の CUDA プロバイダライブラリ（`onnxruntime_providers_cuda` + `_shared`）も同梱しない: 実測で win 178.3MiB / linux 259.5MiB と大きく、インストーラを数百 MB 肥大化させるため。代わりにモデル配置と同じ流儀で、ユーザーが公式 ONNX Runtime 1.30.0 GPU パッケージから取り出した 2 ファイルを ORT バイナリと同じフォルダ（設定画面に表示）へ配置する方式とする（配置の有無は設定画面で判定表示する）。根拠: バンドル済み CPU 版 ORT でも共有プロバイダブリッジが動作し、配置した CUDA ライブラリを読みに行くことを Linux で実測（`tools/face-spike/GPU_PROVIDER_RESULTS.md`）。DirectML は Windows パッケージに `DirectML.dll` が同梱済みで前提条件なし。**modelId はプロバイダで分けない**（GPU/CPU の数値差は誤差レベル想定。実機で大きな乖離が観測されたら分離を再検討する）。GPU 実機での動作・速度・埋め込み一致は未検証（この VM に GPU がない） | 決定済み |
 
 ---
 

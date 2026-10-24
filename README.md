@@ -6,7 +6,7 @@
 
 ## このフォークで追加した機能（ブランチ `feature/face-recognition`）
 
-- **顔検出と顔サムネイル**: 動画から顔のある場面を自動で抽出し、顔サムネイルを生成します。検出は SCRFD、認識はモデルパックで ArcFace（InsightFace）または LVFace-T（ByteDance）を選択でき、推論はすべてローカル・CPU で動きます
+- **顔検出と顔サムネイル**: 動画から顔のある場面を自動で抽出し、顔サムネイルを生成します。検出は SCRFD、認識はモデルパックで ArcFace（InsightFace）または LVFace-T（ByteDance）を選択でき、推論はすべてローカルで動きます（CPU のほか、後述の GPU 実行プロバイダも選択可）
 - **人物ごとの自動分類**: 顔の特徴量をもとに人物ごとに自動でグループ化。サイドバーの人物欄や人物フィルタで「あの人が出ている動画」だけを表示できます
 - **名前付けと手直し**: 人物への名前付け、間違った分類の結合・分割・付け替え、代表顔の変更に対応。手直しの内容は再分類しても保持されます
 - **年齢・性別の推定（任意機能、既定はオフ）**: 人物単位の集約値（年齢は中央値、性別は多数決）だけを保存・表示します。年齢は ±10 歳級の目安です
@@ -23,7 +23,20 @@
    - モデルはアプリに同梱されません。buffalo / LVFace いずれのモデルもライセンスは**非商用の研究目的のみ**ですのでご注意ください
 3. ハブを開くと、通常のサムネイル抽出に続いて顔スキャンが走り、人物欄に結果が表示されます
 
-設計と検証の記録: [設計書](docs/FACE_RECOGNITION_DESIGN.md) / 検証結果は `tools/face-spike/` の `RESULTS.md`、`CLUSTER_RESULTS.md`、`PHASE1_RESULTS.md`〜`PHASE3_RESULTS.md`、`LVFACE_COMPARISON.md`、`LVFACE_PACK_RESULTS.md`
+### GPU で速くする（任意）
+
+設定の「実行プロバイダ」で推論に使う計算デバイスを選べます。既定の **Auto** は、使える GPU があれば自動で使い、無ければ CPU で動きます（Windows: CUDA → DirectML → CPU、Linux: CUDA → CPU、macOS: CoreML → CPU）。実際に使われているプロバイダは設定画面に表示されます。手動で CUDA / DirectML / CoreML / CPU を固定することもできます（失敗した場合は自動で次の候補に落ちます）。
+
+- **DirectML（Windows）**: 追加の準備は不要です。DirectX 12 対応 GPU（NVIDIA / AMD / Intel）で動きます
+- **CUDA（NVIDIA GPU）**: 以下がすべて必要です。CUDA ランタイムはアプリに同梱されないため、各自でインストールしてください
+  1. 最新の NVIDIA ドライバ
+  2. **CUDA Toolkit 13.x**（cudart / cublas などのランタイムライブラリ）
+  3. **cuDNN 9.x**（CUDA 13 用。ライブラリを PATH の通った場所へ）
+  4. ONNX Runtime の CUDA プロバイダライブラリ 2 ファイル（`onnxruntime_providers_cuda.dll` と `onnxruntime_providers_shared.dll`、Linux は `.so` 版）を、設定画面に表示されるフォルダ（ONNX Runtime 本体と同じフォルダ）へ配置する。入手元は公式 ONNX Runtime **1.30.0** の GPU パッケージ（NuGet の `Microsoft.ML.OnnxRuntime.Gpu.Windows` / `Microsoft.ML.OnnxRuntime.Gpu.Linux`、または GitHub リリースの `gpu_cuda13` アーカイブ）。**バージョンは必ず 1.30.0 に合わせてください**
+  - 配置先フォルダはアプリのインストールフォルダ内です。書き込めない場合は管理者権限でコピーしてください。ポータブル版ならそのままコピーできます
+  - CUDA が使えない環境では、理由が設定画面に表示されたうえで DirectML / CPU に自動で切り替わります
+
+設計と検証の記録: [設計書](docs/FACE_RECOGNITION_DESIGN.md) / 検証結果は `tools/face-spike/` の `RESULTS.md`、`CLUSTER_RESULTS.md`、`PHASE1_RESULTS.md`〜`PHASE3_RESULTS.md`、`LVFACE_COMPARISON.md`、`LVFACE_PACK_RESULTS.md`、`GPU_PROVIDER_RESULTS.md`
 
 ## ライセンス上の注意点とクレジット
 
