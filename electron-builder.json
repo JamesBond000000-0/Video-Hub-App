@@ -65,7 +65,7 @@
     ]
   },
   "linux": {
-    "icon": "src/assets/icons.icns",
+    "icon": "src/assets/icons/png",
     "asar": true,
     "asarUnpack": [
       "../node_modules/ffmpeg-static",
