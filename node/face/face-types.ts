@@ -89,6 +89,19 @@ export interface FaceIndexFile {
   videos: Record<string, FaceVideoEntry>; // key: ImageElement.hash
   persons: PersonRecord[];                // global clustering result (§5.6)
   nextPersonSeq?: number;                 // next free person number (IDs never reused)
+  // Manual corrections (Phase 3). Pins are the source of truth for the
+  // groups they name: re-clustering rebuilds pinned persons from them
+  // verbatim and never reassigns a pinned group. Editing a person pins
+  // ("freezes") its whole composition, so manual work survives any
+  // number of re-clusterings until another edit touches the person.
+  manualGroups?: Record<string, string>;  // "<videoHash>#<groupId>" -> personId
+  manualUnassigned?: string[];            // group keys pinned to "no person"
+  manualRepFaces?: Record<string, string>; // personId -> representative faceId override
+}
+
+/** Key identifying one (video, within-video group) pair. */
+export function faceGroupKey(videoHash: string, groupId: number): string {
+  return videoHash + '#' + groupId;
 }
 
 export interface FaceIndexPayload {
