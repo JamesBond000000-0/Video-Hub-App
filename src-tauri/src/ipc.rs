@@ -4,7 +4,7 @@ use serde_json::{Value, json};
 use tauri::{Emitter, Manager, State, Window};
 
 use crate::{
-  hub, media, settings,
+  face, hub, media, settings,
   state::{CurrentHub, VhaState},
 };
 
@@ -175,6 +175,7 @@ fn open_hub(window: &Window, state: &VhaState, path: PathBuf) -> Result<(), Stri
     screenshot_settings,
     known_paths,
   })?;
+  state.set_face_settings_from_final_object(&final_object)?;
 
   emit_to_angular(
     window,
@@ -398,6 +399,7 @@ fn start_import(window: &Window, state: &VhaState, args: &[Value]) -> Result<(),
     screenshot_settings,
     known_paths: Default::default(),
   })?;
+  state.set_face_settings_from_final_object(&final_object)?;
 
   emit_to_angular(
     window,
@@ -445,6 +447,30 @@ fn add_missing_thumbnails(
   let generation = state.begin_background_work();
   media::spawn_missing_thumbnails(window.app_handle().clone(), generation, images);
   Ok(())
+}
+
+fn face_model_status(window: &Window, state: &VhaState) -> Result<(), String> {
+  let settings = state.face_settings()?;
+  emit_to_angular(
+    window,
+    "face-model-status-returning",
+    vec![face::model_status(&settings)],
+  )
+}
+
+fn face_get_index(window: &Window, state: &VhaState) -> Result<(), String> {
+  let settings = state.face_settings()?;
+  let payload = match state.current_hub()? {
+    Some(hub) => face::hub_index_payload(&hub.asset_folder, &settings),
+    None => face::empty_index_payload(),
+  };
+  emit_to_angular(window, "face-index-returning", vec![payload])
+}
+
+fn face_settings_updated(window: &Window, state: &VhaState, args: &[Value]) -> Result<(), String> {
+  let patch = required_arg(args, 0)?;
+  state.update_face_settings(patch)?;
+  face_model_status(window, state)
 }
 
 fn unsupported_channel(window: &Window, state: &VhaState, channel: &str) -> Result<(), String> {
@@ -518,6 +544,12 @@ pub fn ipc_send(
         .collect();
       state.set_additional_extensions(extensions)
     }
+    // Face recognition, Phase A (docs/TAURI_FACE_PORT_DESIGN.md): the
+    // read-only channels. Scan / recluster / person edits stay unsupported
+    // until Phases B and C land.
+    "face-get-model-status" => face_model_status(&window, &state),
+    "face-get-index" => face_get_index(&window, &state),
+    "face-settings-updated" => face_settings_updated(&window, &state, &args),
     // Touch Bar integration is macOS/Electron-specific. Settings restoration
     // sends these messages even on platforms where there is nothing to update.
     "app-to-touchBar" => Ok(()),

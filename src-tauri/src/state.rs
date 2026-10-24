@@ -21,6 +21,7 @@ pub struct CurrentHub {
 
 pub struct VhaState {
   settings_file: PathBuf,
+  face_settings: Mutex<Value>,
   current_hub: Mutex<Option<CurrentHub>>,
   system_messages: Mutex<Value>,
   additional_extensions: Mutex<Vec<String>>,
@@ -50,6 +51,7 @@ impl VhaState {
 
     Ok(Self {
       settings_file: settings_directory.join("settings.json"),
+      face_settings: Mutex::new(crate::face::default_face_settings()),
       current_hub: Mutex::new(None),
       system_messages: Mutex::new(system_messages),
       additional_extensions: Mutex::new(Vec::new()),
@@ -63,6 +65,41 @@ impl VhaState {
 
   pub fn settings_file(&self) -> PathBuf {
     self.settings_file.clone()
+  }
+
+  /// The face settings of the open hub (Electron's GLOBALS.faceSettings):
+  /// read from the hub's FinalObject on open, partially merged on
+  /// `face-settings-updated`.
+  pub fn face_settings(&self) -> Result<Value, String> {
+    Ok(
+      self
+        .face_settings
+        .lock()
+        .map_err(|_| "Face settings state is unavailable".to_string())?
+        .clone(),
+    )
+  }
+
+  pub fn set_face_settings_from_final_object(&self, final_object: &Value) -> Result<(), String> {
+    *self
+      .face_settings
+      .lock()
+      .map_err(|_| "Face settings state is unavailable".to_string())? =
+      crate::face::face_settings_with_defaults(final_object.get("faceSettings"));
+    Ok(())
+  }
+
+  pub fn update_face_settings(&self, patch: &Value) -> Result<Value, String> {
+    let mut current = self
+      .face_settings
+      .lock()
+      .map_err(|_| "Face settings state is unavailable".to_string())?;
+    if let (Some(target), Some(source)) = (current.as_object_mut(), patch.as_object()) {
+      for (key, value) in source {
+        target.insert(key.clone(), value.clone());
+      }
+    }
+    Ok(current.clone())
   }
 
   pub fn set_current_hub(&self, hub: CurrentHub) -> Result<(), String> {

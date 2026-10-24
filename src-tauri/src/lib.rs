@@ -1,3 +1,4 @@
+mod face;
 mod hub;
 mod ipc;
 mod media;
