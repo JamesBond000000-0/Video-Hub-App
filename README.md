@@ -24,6 +24,16 @@
 
 設計と検証の記録: [設計書](docs/FACE_RECOGNITION_DESIGN.md) / 検証結果は `tools/face-spike/` の `RESULTS.md`、`CLUSTER_RESULTS.md`、`PHASE1_RESULTS.md`〜`PHASE3_RESULTS.md`
 
+## ライセンス上の注意点とクレジット
+
+このフォークのコード自体は本家と同じ MIT ライセンスですが、顔認識のために使う**学習済みモデルには別の条件**が付きます。
+
+- **顔認識モデル（InsightFace / buffalo パック）**: 顔検出（SCRFD）、顔認識（ArcFace）、年齢・性別推定（genderage）のモデルは [InsightFace](https://github.com/deepinsight/insightface)（DeepInsight）が公開している buffalo_l / buffalo_sc パックのものです。InsightFace のコードは MIT ライセンスですが、**公開されている学習済みモデルの重みは「非商用の研究目的のみ」**とされており、商用利用はできません。このフォークは個人による非商用利用を前提としています。モデルファイルはこのリポジトリにもアプリの配布物にも含まれておらず、利用する各自が InsightFace の配布元から取得してください
+  - 論文: ArcFace — Deng et al., "ArcFace: Additive Angular Margin Loss for Deep Face Recognition", CVPR 2019 / SCRFD — Guo et al., "Sample and Computation Redistribution for Efficient Face Detection", 2021
+- **追加した依存ライブラリ**: [onnxruntime-node](https://github.com/microsoft/onnxruntime)（MIT License、Microsoft）/ [sharp](https://github.com/lovell/sharp)（Apache License 2.0。画像処理に使う libvips は LGPL 3.0 以降のライセンスです）
+- **本家**: Video Hub App 3 は Boris Yakubchik（[whyboris](https://github.com/whyboris)）作で、MIT ライセンスです（詳細は下記の本家 README の License 節と `LICENSE` ファイルを参照）。このフォークは本家とは無関係の非公式なものです
+- **データの取り扱いについて**: 顔の特徴量（埋め込みベクトル）は生体情報にあたるデータです。処理はすべて自分の PC 内で完結し、外部に送信されることはありませんが、各ハブの `faces/` フォルダ（特徴量と顔サムネイルを保存）には個人を識別しうる情報が含まれるため、取り扱いと共有には十分注意してください
+
 ---
 
 以下は本家 Video Hub App 3 の README です。
