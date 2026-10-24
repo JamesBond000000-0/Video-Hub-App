@@ -49,6 +49,90 @@ The Tauri target can restore hubs and scan/import new ones when `ffmpeg` and `ff
 
 The Tauri target is not yet feature-complete; Electron remains the supported runtime. See [TAURI_MIGRATION.md](./TAURI_MIGRATION.md) for the current status, unverified items, manual test checklist, and migration plan.
 
+### Building from source (per platform)
+
+Common prerequisites for every platform:
+
+- **Node.js** 24 (see `.nvmrc`) and npm
+- **Git**
+- For running the app (both runtimes): `ffmpeg` and `ffprobe` available on `PATH`, or pointed to with the `VHA_FFMPEG_PATH` / `VHA_FFPROBE_PATH` environment variables — needed for thumbnails and media import
+- For the Tauri runtime only: **Rust** stable, version 1.90 or newer, installed via [rustup](https://rustup.rs/)
+
+Install the JavaScript dependencies first (all platforms):
+
+```bash
+npm install --legacy-peer-deps
+```
+
+#### Electron (supported runtime)
+
+```bash
+npm start          # develop (Angular + Electron)
+npm run electron   # build and package with electron-builder
+```
+
+Installers are written under `dist/`.
+
+#### Tauri — Windows
+
+Additional prerequisites:
+
+- Visual Studio 2022 Build Tools with the **Desktop development with C++** workload (MSVC + Windows SDK)
+- The **WebView2 Runtime** (preinstalled on Windows 11 and recent Windows 10)
+
+```powershell
+npm run tauri:dev                                   # develop
+npm run tauri:build -- --bundles nsis,msi           # release build
+```
+
+Output: `src-tauri/target/release/bundle/nsis/` (`.exe` installer) and `src-tauri/target/release/bundle/msi/` (`.msi`).
+
+#### Tauri — macOS
+
+Additional prerequisites:
+
+- Xcode Command Line Tools: `xcode-select --install`
+
+```bash
+npm run tauri:dev    # develop (builds for your machine's architecture)
+
+# Universal binary (Apple Silicon + Intel):
+rustup target add aarch64-apple-darwin x86_64-apple-darwin
+npm run tauri:build -- --target universal-apple-darwin
+```
+
+Output (universal build): `src-tauri/target/universal-apple-darwin/release/bundle/dmg/` (`.dmg`) and `.../bundle/macos/` (`.app`). Builds are unsigned, so on first launch Gatekeeper may block the app or report it as damaged; right-click the app and choose **Open**, or run `xattr -cr "Video Hub App 3.app"` to clear the quarantine attribute.
+
+#### Tauri — Linux (Ubuntu / Debian)
+
+Additional system packages (see also the [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/)):
+
+```bash
+sudo apt-get install -y \
+  libwebkit2gtk-4.1-dev libgtk-3-dev \
+  libayatana-appindicator3-dev librsvg2-dev \
+  libxdo-dev libssl-dev patchelf build-essential
+# add `rpm libfuse2` as well if you want the .rpm and .AppImage bundles
+```
+
+```bash
+npm run tauri:dev                                     # develop
+npm run tauri:build -- --bundles deb,rpm,appimage    # release build
+```
+
+Output: `src-tauri/target/release/bundle/` under `deb/`, `rpm/`, and `appimage/`.
+
+#### Checks
+
+```bash
+npm run check:tsc              # TypeScript type check
+cargo test --manifest-path src-tauri/Cargo.toml   # Rust unit tests
+```
+
+#### Prebuilt test releases (GitHub Actions)
+
+The workflow [`.github/workflows/tauri-release.yml`](./.github/workflows/tauri-release.yml) builds all three platforms (Windows NSIS/MSI, macOS universal DMG, Linux deb/rpm/AppImage) and publishes them as a prerelease. Push a tag matching `tauri-v*` — for example `tauri-v3.3.0-test.2` — or run the workflow manually from the **Actions** tab and provide the tag.
+
 Main dependencies in use:
 
 | Library          | Version | Date      | Comment |
