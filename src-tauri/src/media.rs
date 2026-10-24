@@ -12,7 +12,7 @@ use std::{
 
 use serde_json::{Value, json};
 use tauri::{AppHandle, Emitter, Manager};
-use wait_timeout::ChildWaitTimeoutExt;
+use wait_timeout::ChildExt;
 use walkdir::WalkDir;
 
 use crate::{hub, state::VhaState, storage::IPC_MAP_KEY};
