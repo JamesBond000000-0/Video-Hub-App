@@ -11,6 +11,9 @@ on:
         description: 'Prerelease tag to create'
         required: true
         default: 'v3.3.0-face-test.1'
+  push:
+    tags:
+      - 'v*-face-test*'
 
 jobs:
   build:
@@ -71,8 +74,8 @@ jobs:
       - name: Create prerelease
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ inputs.tag }}
-          name: 顔認識テスト版 ${{ inputs.tag }}
+          tag_name: ${{ inputs.tag || github.ref_name }}
+          name: 顔認識テスト版 ${{ inputs.tag || github.ref_name }}
           prerelease: true
           body: |
             顔認識フォーク（`feature/face-recognition`）のテスト用ビルドです。
