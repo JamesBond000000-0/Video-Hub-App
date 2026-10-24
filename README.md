@@ -1,3 +1,33 @@
+# Video Hub App 3 ＋ 顔認識（フォーク）
+
+> このリポジトリは [Video Hub App 3](https://github.com/whyboris/Video-Hub-App)（whyboris 作）のフォークに、**顔認識による人物ごとの自動分類**を追加したものです。個人利用のためのフォークで、本家とは関係ありません。
+>
+> _Fork of Video Hub App 3 with local, on-device face recognition: videos are automatically grouped by the people appearing in them._
+
+## このフォークで追加した機能（ブランチ `feature/face-recognition`）
+
+- **顔検出と顔サムネイル**: 動画から顔のある場面を自動で抽出し、顔サムネイルを生成します。検出は SCRFD、認識は ArcFace（InsightFace のモデル）で、推論はすべてローカル・CPU で動きます
+- **人物ごとの自動分類**: 顔の特徴量をもとに人物ごとに自動でグループ化。サイドバーの人物欄や人物フィルタで「あの人が出ている動画」だけを表示できます
+- **名前付けと手直し**: 人物への名前付け、間違った分類の結合・分割・付け替え、代表顔の変更に対応。手直しの内容は再分類しても保持されます
+- **年齢・性別の推定（任意機能、既定はオフ）**: 人物単位の集約値（年齢は中央値、性別は多数決）だけを保存・表示します。年齢は ±10 歳級の目安です
+
+顔データは各ハブのフォルダ内の `faces/` に保存されます。元の動画ファイルには触れず、本家のデータ形式（`.vha2`）への追加は人物 ID のキャッシュのみに留めています。
+
+## 使い方（顔認識）
+
+1. 設定の「顔認識」セクションで顔認識を有効化する
+2. モデルファイルを、設定画面に表示される配置先（`<userData>/face-models/quality/`）に置く
+   - quality（既定）: `det_10g.onnx` と `w600k_r50.onnx`（InsightFace の buffalo_l パックから取得、計 約190MB）
+   - light: `det_500m.onnx` と `w600k_mbf.onnx`（buffalo_sc パック、計 約16MB）
+   - モデルはアプリに同梱されません。buffalo モデルのライセンスは**非商用の研究目的のみ**ですのでご注意ください
+3. ハブを開くと、通常のサムネイル抽出に続いて顔スキャンが走り、人物欄に結果が表示されます
+
+設計と検証の記録: [設計書](docs/FACE_RECOGNITION_DESIGN.md) / 検証結果は `tools/face-spike/` の `RESULTS.md`、`CLUSTER_RESULTS.md`、`PHASE1_RESULTS.md`〜`PHASE3_RESULTS.md`
+
+---
+
+以下は本家 Video Hub App 3 の README です。
+
 # Video Hub App 3
 
 [_Video Hub App 3_](https://videohubapp.com/) is the fastest way to browse, search, and organize videos on your computer. Think of it like YouTube for videos on your computer. Works on **Windows**, **Mac**, and **Linux**!
