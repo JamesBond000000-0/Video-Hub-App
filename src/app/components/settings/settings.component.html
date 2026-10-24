@@ -240,6 +240,18 @@
         </select>
       </div>
 
+      <div class="face-pack-row">
+        <span>{{ 'SETTINGS.faceProvider' | translate }}</span>
+        <select class="language-drop-down monospace" [value]="face.provider || 'auto'" (change)="changeFaceProvider($event)">
+          <option value="auto">{{ 'SETTINGS.faceProviderAuto' | translate }}</option>
+          <option value="cuda">{{ 'SETTINGS.faceProviderCuda' | translate }}</option>
+          <option value="directml">{{ 'SETTINGS.faceProviderDirectml' | translate }}</option>
+          <option value="coreml">{{ 'SETTINGS.faceProviderCoreml' | translate }}</option>
+          <option value="cpu">{{ 'SETTINGS.faceProviderCpu' | translate }}</option>
+        </select>
+      </div>
+      <div class="face-model-note">{{ 'SETTINGS.faceCudaNote' | translate }}</div>
+
       <label class="face-toggle">
         <input type="checkbox" [checked]="face.attributesEnabled" (change)="toggleFaceAttributes($event)">
         {{ 'SETTINGS.faceAttributes' | translate }}
@@ -280,6 +292,30 @@
           }
         </ul>
         <div class="face-model-note">{{ 'SETTINGS.faceModelsNote' | translate }}</div>
+        @if (status.providerInfo; as providerInfo) {
+          <div class="face-provider-status">
+            @if (providerInfo.effective) {
+              <div>
+                {{ 'SETTINGS.faceProviderActive' | translate: { provider: providerInfo.effective, requested: providerInfo.requested } }}
+              </div>
+            } @else {
+              <div>
+                {{ 'SETTINGS.faceProviderPending' | translate: { requested: providerInfo.requested } }}
+              </div>
+            }
+            @for (attempt of providerInfo.attempts; track attempt.provider) {
+              @if (!attempt.ok) {
+                <div class="face-model-note">✗ {{ attempt.provider }}: {{ attempt.error }}</div>
+              }
+            }
+            <div>
+              {{ (providerInfo.cudaLibsPresent ? 'SETTINGS.faceCudaLibsPlaced' : 'SETTINGS.faceCudaLibsMissing') | translate }}
+            </div>
+            @if (!providerInfo.cudaLibsPresent && providerInfo.ortBinDir) {
+              <div class="monospace face-model-path">{{ providerInfo.ortBinDir }}</div>
+            }
+          </div>
+        }
       </div>
     }
 

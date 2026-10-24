@@ -17,6 +17,7 @@ export const DEFAULT_FACE_SETTINGS: FaceSettings = {
   autoScanNew: true,
   attributesEnabled: false,
   attributeSamplesPerGroup: 5,
+  provider: 'auto',
 };
 
 export interface FaceGroupForDisplay {

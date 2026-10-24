@@ -116,6 +116,14 @@ export class SettingsComponent implements OnInit, OnChanges {
     }
   }
 
+  changeFaceProvider(event: Event) {
+    const settings = this.faceSettings();
+    if (settings) {
+      settings.provider = (event.target as HTMLSelectElement).value as FaceSettings['provider'];
+      this.faceSettingsChanged.emit();
+    }
+  }
+
   editAdditionalExtensions() {
     this.editAdditional = !this.editAdditional;
     this.additionalInput = this.appState.addtionalExtensions;
