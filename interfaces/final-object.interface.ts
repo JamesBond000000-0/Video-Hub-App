@@ -23,6 +23,7 @@ export interface FinalObject {
   numOfFolders: number;          // number of folders - is always re-counted when app starts
   removeTags: string[];          // tags to remove
   screenshotSettings: ScreenshotSettings;
+  faceSettings?: FaceSettings; // optional so pre-existing .vha2 files still parse; defaults are filled in on open
   tagColors?: Record<string, string>; // lookup table for tag name to color mapping
   version: number;               // version of this vha file
 }
@@ -50,6 +51,7 @@ export interface ImageElement {
   // ------------------------------------------------------------------------
   defaultScreen?: number;        // index of default screenshot to show
   notes?: string;                // any free-form notes a user may want to add to any video
+  persons?: string[];            // face-recognition person IDs in this video (cache; source of truth is the hub's faces/index.json)
   playlist?: number;             // timestamp of when user clicked `add to playlist`
   tags?: string[];               // tags associated with this particular file
   year?: number;                 // optional tag to track the year of the video
@@ -106,4 +108,27 @@ export interface ScreenshotSettings {
   fixed: boolean;
   height: AllowedScreenshotHeight;
   n: number;
+}
+
+export type FaceModelPack = 'quality' | 'light' | 'lvface';
+
+// Execution provider for face inference (design doc decision D9).
+// 'auto' walks a per-platform fallback ladder (win32: CUDA -> DirectML ->
+// CPU; linux: CUDA -> CPU; darwin: CoreML -> CPU); the other values pin
+// the first candidate, still with CPU as the last-resort fallback.
+export type FaceProviderSetting = 'auto' | 'cpu' | 'cuda' | 'directml' | 'coreml';
+
+// Face recognition settings (design doc: docs/FACE_RECOGNITION_DESIGN.md §7).
+// Saved inside the .vha2 file; face data itself lives in the hub's faces/ folder.
+export interface FaceSettings {
+  enabled: boolean;                // opt-in: face scanning (default off)
+  modelPack: FaceModelPack;        // 'quality' = buffalo_l (det_10g + w600k_r50); 'light' = buffalo_sc (det_500m + w600k_mbf); 'lvface' = det_10g + LVFace-T
+  maxFramesPerVideo: number;       // cap for the §5.1 frame sampling
+  sampleIntervalSec: number;       // base interval for the §5.1 frame sampling
+  minFaceSizePx: number;           // faces smaller than this are discarded (§5.2)
+  clusterThreshold: number;        // global clustering threshold T_global (§5.6, used from Phase 2)
+  autoScanNew: boolean;            // scan faces automatically after thumbnail extraction
+  attributesEnabled: boolean;      // age/gender estimation (§5.8, used from Phase 2)
+  attributeSamplesPerGroup: number; // samples per (video, group) for attributes (§5.8, Phase 2)
+  provider: FaceProviderSetting;   // ONNX execution provider (decision D9); absent in older files = 'auto'
 }

@@ -61,6 +61,7 @@ export type SettingsButtonKey = 'autoFileTags'
  | 'showMoreInfo'
  | 'showOnlyFavorites'
  | 'showOnlyPlaylist'
+ | 'showPersonsSidebar'
  | 'showRecent'
  | 'showRecentlyPlayed'
  | 'showRelatedVideosTray'
@@ -767,6 +768,13 @@ export const SettingsButtons: SettingsButtonsType = {
     moreInfo: 'BUTTONS.relatedTrayMoreInfo',
     title: 'BUTTONS.relatedTrayHint',
     toggled: false
+  },
+  'showPersonsSidebar': {
+    description: 'BUTTONS.showPersonsSidebarDescription',
+    hidden: true,
+    iconName: 'icon-tag-manual',
+    title: 'BUTTONS.showPersonsSidebarHint',
+    toggled: true
   },
   'showTags': {
     description: 'BUTTONS.showTagsDescription',

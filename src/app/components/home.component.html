@@ -164,6 +164,31 @@
    />
 }
 
+  <!-- ===========    PERSONS MODAL    =========== -->
+@if (personsViewOpen) {
+  <div
+    class="settings-modal"
+    @modalAnimation
+  >
+    <div
+      (click)="personsViewOpen = false"
+      class="close-settings"
+      title="{{ 'SETTINGS.closeSettings' | translate }}"
+    >
+      <app-icon class="close-modal-icon" [icon]="'icon-close'" />
+    </div>
+    <app-persons
+      (personClicked)="personFilterClicked($event)"
+      (scanRequested)="onFaceScanRequested()"
+
+      [attributesEnabled]="currentFaceSettings.attributesEnabled"
+      [darkMode]="settingsButtons['darkMode'].toggled"
+      [folderPath]="appState.selectedOutputFolder"
+      [hubName]="appState.hubName"
+     />
+  </div>
+}
+
   <!-- ===========    AUTO-GENERATED TAGS MODAL    =========== -->
 @if (settingsButtons['showTags'].toggled) {
   <div
@@ -241,9 +266,16 @@
       (scrollSettingsToTop)="scrollSettingsToTop()"
       (toggleButton)="toggleButton($any($event))"
       (toggleHideButton)="toggleHideButton($event)"
+      (faceSettingsChanged)="onFaceSettingsChanged()"
+      (faceScanRequested)="onFaceScanRequested()"
+      (faceReclusterRequested)="onFaceReclusterRequested()"
 
       [appState]="appState"
       [demo]="demo"
+      [faceModelMismatch]="faceService.modelMismatch"
+      [faceModelStatus]="faceService.modelStatus"
+      [faceSettings]="currentFaceSettings"
+      [faceStats]="faceService.stats"
       [latestVersionAvailable]="latestVersionAvailable"
       [settingTabToShow]="settingTabToShow"
       [settingsButtons]="settingsButtons"
@@ -765,6 +797,39 @@
         }
       </div>
 
+      <!-- Persons (face recognition, §8.1) -->
+    @if (settingsButtons['showPersonsSidebar'].toggled && faceService.persons.length > 0) {
+      <div class="persons-sidebar">
+        <div class="persons-sidebar-heading">
+          <span>{{ 'PERSONS.heading' | translate }}</span>
+          <span class="persons-view-all" (click)="personsViewOpen = true">
+            {{ 'PERSONS.viewAll' | translate }}
+          </span>
+        </div>
+        @for (person of faceService.sidebarPersons(10); track person.personId) {
+          <div
+            class="persons-sidebar-row"
+            [ngClass]="{ 'persons-sidebar-active': personFilterId === person.personId }"
+            (click)="personFilterClicked(person.personId)"
+            title="{{ 'PERSONS.filterHint' | translate }}"
+          >
+            <img
+              class="persons-sidebar-thumb"
+              [src]="filePathService.createFaceCropPath(appState.selectedOutputFolder, appState.hubName, person.representativeFaceId)"
+              alt=""
+            >
+            <span class="persons-sidebar-name">{{ person.name || ('PERSONS.unnamed' | translate: { num: faceService.personNumber(person) }) }}</span>
+            <span class="persons-sidebar-count">{{ person.videoHashes.length }}</span>
+          </div>
+        }
+        @if (personFilterId) {
+          <div class="persons-sidebar-clear" (click)="personFilterId = ''">
+            {{ 'PERSONS.clearFilter' | translate }}
+          </div>
+        }
+      </div>
+    }
+
       <!-- Recently opened -->
       <app-recently-opened-hubs
         (openFromHistory)="openFromHistory($event)"
@@ -815,6 +880,8 @@
                 | playlistOnlyPipe : settingsButtons['showOnlyPlaylist'].toggled : playlistViewRefresh
 
                 | favoritesOnlyPipe : settingsButtons['showOnlyFavorites'].toggled
+
+                | personFilterPipe : personFilterId : faceService.personsVersion
 
                 | deleteFilePipe : deletePipeTrigger()
 
@@ -1063,6 +1130,7 @@
           (videoClick)="handleClick($event, item)"
           (rightClick)="rightMouseClicked($event.mouseEvent, $event.item)"
           (filterTag)="handleTagWordClicked($event.tag.name, $event.event)"
+          (filterPerson)="personFilterClicked($event)"
           (sheetClick)="this.openThumbnailSheet(item)"
 
           (drop)="droppedSomethingOverVideo($event, item)"
@@ -1346,6 +1414,7 @@
         class="meta-container top-offset"
 
         (filterTag)="handleTagWordClicked($event.tag.name, $event.event)"
+        (filterPerson)="personFilterClicked($event)"
 
         [video]="currentClickedItem"
 

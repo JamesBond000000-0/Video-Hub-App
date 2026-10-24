@@ -10,6 +10,7 @@ import { ManualTagsService } from '../tags-manual/manual-tags.service';
 
 import type { StarRating, ImageElement } from '../../../../interfaces/final-object.interface';
 import type { TagEmit, RenameFileResponse } from '../../../../interfaces/shared-interfaces';
+import type { FaceDisplayGroup } from '../views/details/details.component';
 
 import { SettingsButtons } from '../../common/settings-buttons';
 
@@ -26,6 +27,7 @@ export class MetaComponent implements OnInit, OnDestroy {
   readonly videoNotes = viewChild<ElementRef>('videoNotes');
 
   readonly filterTag = output<TagEmit>();
+  readonly filterPerson = output<string>();
 
   @Input() video: ImageElement;
 
@@ -33,6 +35,7 @@ export class MetaComponent implements OnInit, OnDestroy {
 
   readonly focusOnAddTag = input<boolean>(false);
   readonly darkMode = input<boolean>();
+  readonly faceGroups = input<FaceDisplayGroup[]>([]);
   readonly imgHeight = input<number>();
   readonly largerFont = input<boolean>();
   readonly maxWidth = input<number>();

@@ -92,6 +92,8 @@ import { LengthFilterPipe } from './pipes/length-filter.pipe';
 import { LengthPipe } from './pipes/length.pipe';
 import { MagicSearchPipe } from './pipes/magic-search.pipe';
 import { ManualTagSortPipe } from './pipes/manual-tags-sort.pipe';
+import { PersonFilterPipe } from './pipes/person-filter.pipe';
+import { PersonsComponent } from './components/persons/persons.component';
 import { PlaylistOnlyPipe } from './pipes/playlist-only.pipe';
 import { PlaylistPipe } from './pipes/playlist.pipe';
 import { RegexSearchPipe } from './pipes/regex-search.pipe';
@@ -151,6 +153,8 @@ import { YearPipe } from './pipes/year.pipe';
     ManualTagSortPipe,
     MetaComponent,
     ModalComponent,
+    PersonFilterPipe,
+    PersonsComponent,
     PlaylistOnlyPipe,
     PlaylistPipe,
     RecentlyOpenedComponent,

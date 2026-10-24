@@ -10,7 +10,8 @@ import { ImageElement, FinalObject, InputSources } from '../interfaces/final-obj
 import { SettingsObject } from '../interfaces/settings-object.interface';
 import { createDotPlsFile, writeVhaFileToDisk } from './main-support';
 import { replaceThumbnailWithNewImage } from './main-extract';
-import { closeWatcher, startWatcher, extractAnyMissingThumbs, removeThumbnailsNotInHub } from './main-extract-async';
+import { closeWatcher, startWatcher, extractAnyMissingThumbs, extractAnyMissingFaces, removeThumbnailsNotInHub } from './main-extract-async';
+import { registerFaceIpc } from './face/main-face';
 
 /**
  * Set up the listeners
@@ -280,6 +281,16 @@ export function setUpIpcMessages(ipc, win, pathToAppData, systemMessages) {
    */
   ipc.on('add-missing-thumbnails', (event, finalArray: ImageElement[], extractClips: boolean) => {
     extractAnyMissingThumbs(finalArray);
+  });
+
+  // Face recognition: model status / index / settings channels
+  registerFaceIpc(ipc);
+
+  /**
+   * scan faces for any videos not yet scanned (manual scan from Settings)
+   */
+  ipc.on('face-scan-request', (event, finalArray: ImageElement[]) => {
+    extractAnyMissingFaces(finalArray);
   });
 
   /**

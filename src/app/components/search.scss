@@ -259,3 +259,65 @@
   margin-top: 15px;
   position: absolute;
 }
+
+/* Persons section in the sidebar (face recognition, §8.1) */
+.persons-sidebar {
+  margin: 10px 0;
+
+  .persons-sidebar-heading {
+    display: flex;
+    font-weight: bold;
+    justify-content: space-between;
+    margin-bottom: 4px;
+
+    .persons-view-all {
+      cursor: pointer;
+      font-size: 11px;
+      font-weight: normal;
+      text-decoration: underline;
+    }
+  }
+
+  .persons-sidebar-row {
+    align-items: center;
+    border-radius: 4px;
+    cursor: pointer;
+    display: flex;
+    gap: 6px;
+    padding: 2px 4px;
+
+    &:hover {
+      background: rgba(128, 128, 128, 0.2);
+    }
+
+    &.persons-sidebar-active {
+      background: rgba(128, 200, 128, 0.35);
+    }
+
+    .persons-sidebar-thumb {
+      border-radius: 50%;
+      height: 24px;
+      object-fit: cover;
+      width: 24px;
+    }
+
+    .persons-sidebar-name {
+      flex: 1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .persons-sidebar-count {
+      font-size: 11px;
+      opacity: 0.75;
+    }
+  }
+
+  .persons-sidebar-clear {
+    cursor: pointer;
+    font-size: 11px;
+    margin-top: 4px;
+    text-decoration: underline;
+  }
+}

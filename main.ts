@@ -304,6 +304,7 @@ function openThisDamnFile(pathToVhaFile: string): void {
       GLOBALS.selectedOutputFolder = path.parse(pathToVhaFile).dir;
       GLOBALS.hubName = finalObject.hubName;
       GLOBALS.screenshotSettings = finalObject.screenshotSettings;
+      GLOBALS.faceSettings = { ...GLOBALS.faceSettings, ...(finalObject.faceSettings || {}) };
       upgradeToVersion3(finalObject);
       console.log('setting inputDirs');
       console.log(finalObject.inputDirs);
@@ -414,6 +415,7 @@ function writeVhaFileAndStartExtraction(): void {
     numOfFolders: 0,
     removeTags: [],
     screenshotSettings: GLOBALS.screenshotSettings,
+    faceSettings: { ...GLOBALS.faceSettings },
     version: GLOBALS.vhaFileVersion,
   };
 

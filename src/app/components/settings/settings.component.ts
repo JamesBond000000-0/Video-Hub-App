@@ -9,6 +9,8 @@ import { SettingsMetaGroup, SettingsMetaGroupLabels } from '../../common/setting
 import type { OnChanges, SimpleChanges } from '@angular/core';
 import type { OnInit } from '@angular/core';
 import type { SettingsButtonsType } from '../../common/settings-buttons';
+import type { FaceSettings } from '../../../../interfaces/final-object.interface';
+import type { FaceModelStatus, FaceStats } from '../../../../node/face/face-types';
 
 @Component({
   standalone: false,
@@ -34,9 +36,16 @@ export class SettingsComponent implements OnInit, OnChanges {
   readonly scrollSettingsToTop = output<void>();
   readonly toggleButton = output<string>();
   readonly toggleHideButton = output<string>();
+  readonly faceSettingsChanged = output<void>();
+  readonly faceScanRequested = output<void>();
+  readonly faceReclusterRequested = output<void>();
 
   @Input() appState;
   readonly demo = input();
+  readonly faceModelMismatch = input<boolean>();
+  readonly faceModelStatus = input<FaceModelStatus>();
+  readonly faceSettings = input<FaceSettings>();
+  readonly faceStats = input<FaceStats>();
   readonly latestVersionAvailable = input();
   readonly settingTabToShow = input();
   @Input() settingsButtons: SettingsButtonsType;
@@ -61,6 +70,57 @@ export class SettingsComponent implements OnInit, OnChanges {
   ngOnChanges(changes: SimpleChanges): void {
     if (changes.settingTabToShow) {
       this.scrollSettingsToTop.emit();
+    }
+  }
+
+  toggleFaceEnabled(event: Event) {
+    const settings = this.faceSettings();
+    if (settings) {
+      settings.enabled = (event.target as HTMLInputElement).checked;
+      this.faceSettingsChanged.emit();
+    }
+  }
+
+  toggleFaceAutoScan(event: Event) {
+    const settings = this.faceSettings();
+    if (settings) {
+      settings.autoScanNew = (event.target as HTMLInputElement).checked;
+      this.faceSettingsChanged.emit();
+    }
+  }
+
+  toggleFaceAttributes(event: Event) {
+    const settings = this.faceSettings();
+    if (settings) {
+      settings.attributesEnabled = (event.target as HTMLInputElement).checked;
+      this.faceSettingsChanged.emit();
+    }
+  }
+
+  changeFaceThreshold(event: Event) {
+    const settings = this.faceSettings();
+    if (settings) {
+      const value = parseFloat((event.target as HTMLInputElement).value);
+      if (!isNaN(value)) {
+        settings.clusterThreshold = Math.min(0.9, Math.max(0.1, Math.round(value * 100) / 100));
+        this.faceSettingsChanged.emit();
+      }
+    }
+  }
+
+  changeFaceModelPack(event: Event) {
+    const settings = this.faceSettings();
+    if (settings) {
+      settings.modelPack = (event.target as HTMLSelectElement).value as FaceSettings['modelPack'];
+      this.faceSettingsChanged.emit();
+    }
+  }
+
+  changeFaceProvider(event: Event) {
+    const settings = this.faceSettings();
+    if (settings) {
+      settings.provider = (event.target as HTMLSelectElement).value as FaceSettings['provider'];
+      this.faceSettingsChanged.emit();
     }
   }
 

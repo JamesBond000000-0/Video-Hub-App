@@ -71,3 +71,55 @@
 }
 
 // ----------------- end of metadata details toggles hack ---------------
+
+// ----------------- face recognition section ---------------
+
+.face-settings {
+  font-size: 14px;
+  margin: 10px 20px 30px;
+
+  .face-toggle {
+    display: block;
+    margin-bottom: 8px;
+
+    input {
+      margin-right: 8px;
+    }
+  }
+
+  .face-pack-row {
+    align-items: center;
+    display: flex;
+    gap: 10px;
+    margin: 12px 0;
+  }
+
+  .face-model-status {
+    margin: 12px 0;
+  }
+
+  .face-provider-status {
+    margin-top: 10px;
+  }
+
+  .face-model-path {
+    margin: 6px 0;
+    word-break: break-all;
+  }
+
+  .face-model-files {
+    list-style: none;
+    margin: 6px 0;
+    padding-left: 4px;
+  }
+
+  .face-model-note {
+    font-size: 12px;
+    margin: 8px 0;
+    opacity: 0.7;
+  }
+
+  .face-stats {
+    margin: 12px 0;
+  }
+}

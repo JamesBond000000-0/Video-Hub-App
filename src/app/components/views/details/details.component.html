@@ -45,12 +45,14 @@
 
   <app-meta-item
     (filterTag)="filterTag.emit($event)"
+    (filterPerson)="filterPerson.emit($event)"
 
     [video]="video()"
 
     [settingsButtons]="settingsButtons()"
 
     [darkMode]="darkMode()"
+    [faceGroups]="faceGroups()"
     [imgHeight]="imgHeight()"
     [largerFont]="largerFont()"
     [maxWidth]="maxWidth() / (showTwoColumns() ? 2 : 1) - elWidth()"

@@ -1,0 +1,87 @@
+name: Test Release (face recognition)
+
+# Manual build of the face-recognition fork for testing.
+# Builds the Windows installer / portable and the Linux AppImage from the
+# branch this workflow is dispatched on, and attaches them to a prerelease.
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Prerelease tag to create'
+        required: true
+        default: 'v3.3.0-face-test.1'
+  push:
+    tags:
+      - 'v*-face-test*'
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            platform: --win
+            artifact_name: windows
+            artifact_path: |
+              release/*.exe
+              release/*.exe.blockmap
+          - os: ubuntu-latest
+            platform: --linux
+            artifact_name: linux
+            artifact_path: |
+              release/*.AppImage
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm install --legacy-peer-deps
+
+      - name: Build app (production)
+        run: npm run build:prod
+
+      - name: Package with electron-builder
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+        run: npx electron-builder ${{ matrix.platform }} --x64 --publish never
+
+      - name: Upload packaged app
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: ${{ matrix.artifact_path }}
+          if-no-files-found: error
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download packaged apps
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Create prerelease
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.tag || github.ref_name }}
+          name: 顔認識テスト版 ${{ inputs.tag || github.ref_name }}
+          prerelease: true
+          body: |
+            顔認識フォーク（`feature/face-recognition`）のテスト用ビルドです。
+
+            - 含まれるもの: Windows インストーラ / ポータブル版、Linux AppImage
+            - 顔認識モデルは含まれていません。使う場合は README の「使い方（顔認識）」の手順でモデルファイルを配置してください（buffalo モデルは非商用の研究目的のみ）
+            - 未署名のビルドです。Windows では SmartScreen の警告が出ることがあります
+            - 検証状況と既知の未確認事項は `tools/face-spike/PHASE1_RESULTS.md`〜`PHASE3_RESULTS.md` を参照してください
+          files: artifacts/*
