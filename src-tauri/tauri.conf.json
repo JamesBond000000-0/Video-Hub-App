@@ -1,0 +1,49 @@
+{
+  "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
+  "productName": "Video Hub App 3",
+  "version": "3.3.0",
+  "identifier": "com.videohubapp.videohubapp3",
+  "build": {
+    "frontendDist": "../dist",
+    "devUrl": "http://localhost:4200",
+    "beforeDevCommand": "npm run ng:serve",
+    "beforeBuildCommand": "npm run build:renderer-prod"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Video Hub App 3",
+        "width": 850,
+        "height": 850,
+        "minWidth": 420,
+        "minHeight": 250,
+        "center": true,
+        "resizable": true,
+        "fullscreen": false,
+        "decorations": false
+      }
+    ],
+    "security": {
+      "csp": null,
+      "assetProtocol": {
+        "enable": true,
+        "scope": []
+      }
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "android": {
+      "debugApplicationIdSuffix": ".debug"
+    }
+  }
+}

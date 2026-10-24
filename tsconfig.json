@@ -28,6 +28,7 @@
     "i18n",
     "interfaces",
     "src/main.ts",
+    "src/typings.d.ts",
     "preload.js"
   ]
 }

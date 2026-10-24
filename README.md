@@ -40,6 +40,15 @@ How to start:
 - `npm start` to develop
 - `npm run electron` to build
 
+An experimental Tauri 2 runtime is also available while the backend is being migrated:
+
+- `npm run tauri:dev` to develop with Tauri
+- `npm run tauri:build` to build the Tauri target
+
+The Tauri target can restore hubs and scan/import new ones when `ffmpeg` and `ffprobe` are available on `PATH` (or through `VHA_FFMPEG_PATH` and `VHA_FFPROBE_PATH`). Continuous folder watching, bundled-media discovery, and several integrations are not yet ported.
+
+The Tauri target is not yet feature-complete; Electron remains the supported runtime. See [TAURI_MIGRATION.md](./TAURI_MIGRATION.md) for the current status, unverified items, manual test checklist, and migration plan.
+
 Main dependencies in use:
 
 | Library          | Version | Date      | Comment |

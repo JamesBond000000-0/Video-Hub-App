@@ -1,0 +1,31 @@
+[package]
+name = "video-hub-app"
+version = "3.3.0"
+description = "Browse, search, preview, and organize videos on your computer"
+authors = ["Boris Yakubchik and Video Hub App contributors"]
+license = "MIT"
+repository = "https://github.com/whyboris/Video-Hub-App"
+edition = "2024"
+rust-version = "1.90"
+
+[lib]
+name = "video_hub_app_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2.7.4" }
+
+[dependencies]
+atomicwrites = "0.4"
+dirs = "6.0"
+md5 = "0.8"
+serde_json = "1.0"
+serde = { version = "1.0", features = ["derive"] }
+sys-locale = "0.3"
+log = "0.4"
+tauri = { version = "2.12.5", features = ["protocol-asset"] }
+tauri-plugin-dialog = "2.8.3"
+tauri-plugin-log = "2"
+tauri-plugin-opener = "2.7.2"
+wait-timeout = "0.2"
+walkdir = "2"
