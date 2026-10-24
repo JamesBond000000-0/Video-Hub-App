@@ -1,4 +1,4 @@
-import type { FaceModelPack } from '../../interfaces/final-object.interface';
+import type { FaceModelPack, FaceProviderSetting } from '../../interfaces/final-object.interface';
 
 // ============================================================================
 // Face recognition: shared types (design doc §6)
@@ -48,6 +48,30 @@ export const FACE_MODEL_PACKS: Record<FaceModelPack, FaceModelPackInfo> = {
   },
 };
 
+// ---------------------------------------------------------------------------
+// Execution provider reporting (decision D9). Canonical provider names are
+// the setting names: 'cpu' | 'cuda' | 'directml' | 'coreml'.
+// ---------------------------------------------------------------------------
+
+export interface FaceProviderAttempt {
+  provider: string;               // canonical name that was tried
+  ok: boolean;
+  error?: string;                 // first line of the failure (log / UI)
+}
+
+/** What the worker resolved for its sessions (reported on 'ready'/results). */
+export interface FaceProviderResolution {
+  requested: FaceProviderSetting;
+  effective: string | null;       // canonical provider in use; null = no session created yet
+  attempts: FaceProviderAttempt[];
+}
+
+/** Resolution plus the main-process side facts shown in the settings UI. */
+export interface FaceProviderInfo extends FaceProviderResolution {
+  cudaLibsPresent: boolean;       // CUDA provider libraries found next to the ORT binary
+  ortBinDir: string;              // folder the CUDA provider libraries must be placed in
+}
+
 export interface FaceModelFileStatus {
   name: string;
   present: boolean;
@@ -61,6 +85,7 @@ export interface FaceModelStatus {
   ready: boolean;                 // all required files present
   genderagePath: string;          // resolved genderage.onnx path ('' when not found)
   genderagePresent: boolean;      // genderage.onnx found (needed only for §5.8 attributes)
+  providerInfo: FaceProviderInfo; // execution provider state (decision D9)
 }
 
 export interface FaceRecord {
@@ -159,6 +184,7 @@ export interface FaceScanResult {
   frameCount: number;
   faces: ScannedFace[];
   error?: string;
+  providerInfo?: FaceProviderResolution; // provider state of the worker (D9)
 }
 
 export interface FaceScanJob {
@@ -172,6 +198,7 @@ export interface FaceScanJob {
   detModelPath: string;
   recModelPath: string;
   recKind: RecognizerKind;
+  provider?: FaceProviderSetting; // execution provider (D9); absent = 'auto'
 }
 
 // Within-video grouping threshold (§5.5, decision D5: T_in = 0.50)
@@ -267,9 +294,11 @@ export interface FaceAttributesJob {
   facesDir: string;               // <hub folder>/faces (temp frame location)
   genderageModelPath: string;
   persons: { personId: string; faces: FaceAttributeSampleRequest[] }[];
+  provider?: FaceProviderSetting; // execution provider (D9); absent = 'auto'
 }
 
 export interface FaceAttributesResult {
   results: { personId: string; attributes: PersonAttributes }[];
   error?: string;
+  providerInfo?: FaceProviderResolution; // provider state of the worker (D9)
 }

@@ -40,6 +40,7 @@ export const GLOBALS: VhaGlobals = {
     autoScanNew: true,
     attributesEnabled: false,    // Phase 2
     attributeSamplesPerGroup: 5, // Phase 2
+    provider: 'auto',            // decision D9: GPU when available, CPU fallback
   },
 };
 

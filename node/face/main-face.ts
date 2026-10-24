@@ -15,10 +15,13 @@ import {
   type FaceAttributesResult,
   type FaceIndexPayload,
   type FaceModelStatus,
+  type FaceProviderInfo,
+  type FaceProviderResolution,
   type FaceRecord,
   type FaceScanJob,
   type FaceScanResult,
 } from './face-types';
+import { cudaProviderLibsPresent, getOrtBinDir, normalizeProviderSetting } from './ort-provider';
 
 // ============================================================================
 // Main-process side of face recognition (design §9.1): owns the face worker
@@ -65,7 +68,46 @@ export function getFaceModelStatus(settings: FaceSettings): FaceModelStatus {
     ready: files.every((f) => f.present),
     genderagePath,
     genderagePresent: genderagePath !== '',
+    providerInfo: getFaceProviderInfo(settings),
   };
+}
+
+// ---------------------------------------------------------------------------
+// Execution provider state (decision D9): what was requested, what the
+// worker actually resolved (kept from its last report), and whether the
+// CUDA provider libraries are placed next to the ONNX Runtime binary.
+// ---------------------------------------------------------------------------
+
+let lastProviderResolution: FaceProviderResolution | null = null;
+
+export function getFaceProviderInfo(settings: FaceSettings): FaceProviderInfo {
+  const requested = normalizeProviderSetting(settings ? settings.provider : undefined);
+  const resolution = lastProviderResolution && lastProviderResolution.requested === requested ? lastProviderResolution : null;
+  return {
+    requested,
+    effective: resolution ? resolution.effective : null,
+    attempts: resolution ? resolution.attempts : [],
+    cudaLibsPresent: cudaProviderLibsPresent(),
+    ortBinDir: getOrtBinDir(),
+  };
+}
+
+function noteProviderResolution(resolution: FaceProviderResolution | undefined): void {
+  if (!resolution) {
+    return;
+  }
+  const changed = !lastProviderResolution
+    || lastProviderResolution.effective !== resolution.effective
+    || lastProviderResolution.attempts.length !== resolution.attempts.length;
+  lastProviderResolution = resolution;
+  if (changed) {
+    const failed = resolution.attempts.filter((a) => !a.ok).map((a) => a.provider).join(', ');
+    console.log(
+      'face provider: effective =', resolution.effective || 'none',
+      '(requested:', resolution.requested + ')',
+      failed ? 'unavailable: ' + failed : '',
+    );
+  }
 }
 
 export function hubFacesDir(): string {
@@ -108,6 +150,7 @@ export function notifyFaceIndexUpdated(): void {
 
 let worker: UtilityProcess | null = null;
 let workerPack: FaceSettings['modelPack'] | null = null;
+let workerProvider: FaceSettings['provider'] | null = null;
 let workerReady: Promise<void> | null = null;
 let jobCounter = 0;
 const pendingJobs = new Map<number, { resolve: (r: FaceScanResult) => void; reject: (e: Error) => void }>();
@@ -138,7 +181,9 @@ function killWorker(): void {
     worker = null;
   }
   workerPack = null;
+  workerProvider = null;
   workerReady = null;
+  lastProviderResolution = null;
   pendingJobs.forEach((pending) => pending.reject(new Error('face worker stopped')));
   pendingJobs.clear();
   pendingAttributeJobs.forEach((pending) => pending.reject(new Error('face worker stopped')));
@@ -146,7 +191,8 @@ function killWorker(): void {
 }
 
 function ensureWorker(settings: FaceSettings): Promise<void> {
-  if (worker && workerReady && workerPack === settings.modelPack) {
+  const provider = normalizeProviderSetting(settings.provider);
+  if (worker && workerReady && workerPack === settings.modelPack && workerProvider === provider) {
     return workerReady;
   }
   killWorker();
@@ -157,6 +203,7 @@ function ensureWorker(settings: FaceSettings): Promise<void> {
   });
   worker = child;
   workerPack = settings.modelPack;
+  workerProvider = provider;
   workerReady = new Promise<void>((resolve, reject) => {
     const timeout = setTimeout(() => reject(new Error('face worker init timed out')), 120000);
     child.on('message', (message: any) => {
@@ -165,17 +212,25 @@ function ensureWorker(settings: FaceSettings): Promise<void> {
       }
       if (message.type === 'ready') {
         clearTimeout(timeout);
+        noteProviderResolution(message.providerInfo as FaceProviderResolution | undefined);
+        // push the fresh status so an open settings view shows the
+        // effective provider without waiting for the next poll
+        if (GLOBALS.angularApp && GLOBALS.angularApp.sender) {
+          GLOBALS.angularApp.sender.send('face-model-status-returning', getFaceModelStatus(GLOBALS.faceSettings));
+        }
         resolve();
       } else if (message.type === 'init-error') {
         clearTimeout(timeout);
         reject(new Error('face worker init failed: ' + message.message));
       } else if (message.type === 'result') {
+        noteProviderResolution((message.result as FaceScanResult).providerInfo);
         const pending = pendingJobs.get(message.jobId);
         if (pending) {
           pendingJobs.delete(message.jobId);
           pending.resolve(message.result as FaceScanResult);
         }
       } else if (message.type === 'attributes-result') {
+        noteProviderResolution((message.result as FaceAttributesResult).providerInfo);
         const pending = pendingAttributeJobs.get(message.jobId);
         if (pending) {
           pendingAttributeJobs.delete(message.jobId);
@@ -187,7 +242,9 @@ function ensureWorker(settings: FaceSettings): Promise<void> {
       if (worker === child) {
         worker = null;
         workerPack = null;
+        workerProvider = null;
         workerReady = null;
+        lastProviderResolution = null;
       }
       pendingJobs.forEach((pending) => pending.reject(new Error('face worker exited')));
       pendingJobs.clear();
@@ -199,6 +256,7 @@ function ensureWorker(settings: FaceSettings): Promise<void> {
       detModelPath: path.join(modelsDir, info.detFile),
       recModelPath: path.join(modelsDir, info.recFile),
       recKind: info.recKind,
+      provider,
     });
   });
   return workerReady;
@@ -245,6 +303,7 @@ export async function scanVideoFaces(element: ImageElement, videoFolderPath: str
     detModelPath: path.join(status.modelsDir, FACE_MODEL_PACKS[settings.modelPack].detFile),
     recModelPath: path.join(status.modelsDir, FACE_MODEL_PACKS[settings.modelPack].recFile),
     recKind: FACE_MODEL_PACKS[settings.modelPack].recKind,
+    provider: normalizeProviderSetting(settings.provider),
   };
   try {
     await ensureWorker(settings);
@@ -365,7 +424,12 @@ export async function computeFaceAttributes(elements?: ImageElement[]): Promise<
       const jobId = ++jobCounter;
       pendingAttributeJobs.set(jobId, { resolve, reject });
       if (worker) {
-        const job: FaceAttributesJob = { facesDir: store.facesDir, genderageModelPath, persons: jobPersons };
+        const job: FaceAttributesJob = {
+          facesDir: store.facesDir,
+          genderageModelPath,
+          persons: jobPersons,
+          provider: normalizeProviderSetting(settings.provider),
+        };
         worker.postMessage({ type: 'attributes', jobId, job });
       } else {
         pendingAttributeJobs.delete(jobId);
@@ -409,11 +473,13 @@ export function registerFaceIpc(ipc: Electron.IpcMain): void {
 
   ipc.on('face-settings-updated', (event, faceSettings: FaceSettings) => {
     const packChanged = !!faceSettings && faceSettings.modelPack !== GLOBALS.faceSettings.modelPack;
+    const providerChanged = !!faceSettings
+      && normalizeProviderSetting(faceSettings.provider) !== normalizeProviderSetting(GLOBALS.faceSettings.provider);
     if (faceSettings) {
       GLOBALS.faceSettings = { ...GLOBALS.faceSettings, ...faceSettings };
     }
-    if (packChanged) {
-      killWorker(); // sessions for the other pack are useless; respawn lazily
+    if (packChanged || providerChanged) {
+      killWorker(); // sessions for the other pack / provider are useless; respawn lazily
     }
     event.sender.send('face-model-status-returning', getFaceModelStatus(GLOBALS.faceSettings));
   });

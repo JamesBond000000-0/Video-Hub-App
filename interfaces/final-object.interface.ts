@@ -112,6 +112,12 @@ export interface ScreenshotSettings {
 
 export type FaceModelPack = 'quality' | 'light' | 'lvface';
 
+// Execution provider for face inference (design doc decision D9).
+// 'auto' walks a per-platform fallback ladder (win32: CUDA -> DirectML ->
+// CPU; linux: CUDA -> CPU; darwin: CoreML -> CPU); the other values pin
+// the first candidate, still with CPU as the last-resort fallback.
+export type FaceProviderSetting = 'auto' | 'cpu' | 'cuda' | 'directml' | 'coreml';
+
 // Face recognition settings (design doc: docs/FACE_RECOGNITION_DESIGN.md §7).
 // Saved inside the .vha2 file; face data itself lives in the hub's faces/ folder.
 export interface FaceSettings {
@@ -124,4 +130,5 @@ export interface FaceSettings {
   autoScanNew: boolean;            // scan faces automatically after thumbnail extraction
   attributesEnabled: boolean;      // age/gender estimation (§5.8, used from Phase 2)
   attributeSamplesPerGroup: number; // samples per (video, group) for attributes (§5.8, Phase 2)
+  provider: FaceProviderSetting;   // ONNX execution provider (decision D9); absent in older files = 'auto'
 }

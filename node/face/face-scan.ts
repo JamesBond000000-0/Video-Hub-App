@@ -9,8 +9,10 @@ import { groupWithinVideo } from './cluster';
 import { decodeImage, encodeJpeg, resizeBilinear, type RawImage } from './image-ops';
 import { LVFace } from './lvface';
 import { Scrfd, type DetectedFace } from './scrfd';
-import { WITHIN_VIDEO_THRESHOLD, type FaceScanJob, type FaceScanResult, type RecognizerKind, type ScannedFace } from './face-types';
+import { WITHIN_VIDEO_THRESHOLD, type FaceProviderResolution, type FaceScanJob, type FaceScanResult, type RecognizerKind, type ScannedFace } from './face-types';
 import { FaceStore } from './face-store';
+import { OrtSessionFactory } from './ort-provider';
+import type { FaceProviderSetting } from '../../interfaces/final-object.interface';
 
 const ffmpegPath = require('ffmpeg-static').replace('app.asar', 'app.asar.unpacked');
 
@@ -123,12 +125,32 @@ function displayCrop(img: RawImage, face: DetectedFace): RawImage {
 export class FaceEngine {
   private detector!: Scrfd;
   private recognizer!: ArcFace | LVFace;
+  private sessions!: OrtSessionFactory;
 
-  static async create(detModelPath: string, recModelPath: string, recKind: RecognizerKind = 'arcface'): Promise<FaceEngine> {
+  static async create(
+    detModelPath: string,
+    recModelPath: string,
+    recKind: RecognizerKind = 'arcface',
+    provider: FaceProviderSetting = 'auto',
+    sessions?: OrtSessionFactory,
+  ): Promise<FaceEngine> {
     const engine = new FaceEngine();
-    engine.detector = await Scrfd.create(detModelPath);
-    engine.recognizer = recKind === 'lvface' ? await LVFace.create(recModelPath) : await ArcFace.create(recModelPath);
+    // The worker passes its own factory so genderage sessions share the
+    // one provider resolution (D9); standalone callers get a fresh one.
+    engine.sessions = sessions || new OrtSessionFactory(provider);
+    engine.detector = await Scrfd.create(detModelPath, engine.sessions);
+    engine.recognizer = recKind === 'lvface' ? await LVFace.create(recModelPath, engine.sessions) : await ArcFace.create(recModelPath, engine.sessions);
     return engine;
+  }
+
+  /** Session factory shared by this engine's models (decision D9). */
+  get sessionFactory(): OrtSessionFactory {
+    return this.sessions;
+  }
+
+  /** Which execution provider the sessions actually run on (D9). */
+  providerResolution(): FaceProviderResolution {
+    return this.sessions.resolution();
   }
 
   async scanVideo(job: FaceScanJob): Promise<FaceScanResult> {

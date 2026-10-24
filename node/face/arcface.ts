@@ -12,6 +12,7 @@
 
 import * as ort from "onnxruntime-node";
 import { toBlob, warpAffine, type RawImage } from "./image-ops";
+import { createOrtSession, type OrtSessionFactory } from "./ort-provider";
 import type { DetectedFace } from "./scrfd";
 
 // ArcFace alignment template for 112x112 (design doc appendix B).
@@ -66,11 +67,9 @@ export class ArcFace {
   private session!: ort.InferenceSession;
   private inputName = "";
 
-  static async create(modelPath: string): Promise<ArcFace> {
+  static async create(modelPath: string, sessions?: OrtSessionFactory): Promise<ArcFace> {
     const f = new ArcFace();
-    f.session = await ort.InferenceSession.create(modelPath, {
-      executionProviders: ["cpu"],
-    });
+    f.session = await createOrtSession(modelPath, sessions);
     f.inputName = f.session.inputNames[0];
     return f;
   }

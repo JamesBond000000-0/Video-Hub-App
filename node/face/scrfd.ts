@@ -13,6 +13,7 @@
 
 import * as ort from "onnxruntime-node";
 import { padToCanvas, resizeBilinear, toBlob, type RawImage } from "./image-ops";
+import { createOrtSession, type OrtSessionFactory } from "./ort-provider";
 
 export interface DetectedFace {
   bbox: [number, number, number, number]; // x1, y1, x2, y2 in original image px
@@ -30,11 +31,9 @@ export class Scrfd {
   private outputNames: string[] = [];
   private centerCache = new Map<string, Float32Array>();
 
-  static async create(modelPath: string): Promise<Scrfd> {
+  static async create(modelPath: string, sessions?: OrtSessionFactory): Promise<Scrfd> {
     const d = new Scrfd();
-    d.session = await ort.InferenceSession.create(modelPath, {
-      executionProviders: ["cpu"],
-    });
+    d.session = await createOrtSession(modelPath, sessions);
     d.inputName = d.session.inputNames[0];
     d.outputNames = [...d.session.outputNames];
     if (d.outputNames.length !== 9) {

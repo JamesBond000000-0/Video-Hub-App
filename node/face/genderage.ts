@@ -11,6 +11,7 @@
 import * as ort from 'onnxruntime-node';
 import type { Affine } from './arcface';
 import { toBlob, warpAffine, type RawImage } from './image-ops';
+import { createOrtSession, type OrtSessionFactory } from './ort-provider';
 import type { DetectedFace } from './scrfd';
 import type { AttributeSample } from './face-types';
 
@@ -19,11 +20,9 @@ export class GenderAge {
   private inputName = '';
   static readonly INPUT_SIZE = 96;
 
-  static async create(modelPath: string): Promise<GenderAge> {
+  static async create(modelPath: string, sessions?: OrtSessionFactory): Promise<GenderAge> {
     const g = new GenderAge();
-    g.session = await ort.InferenceSession.create(modelPath, {
-      executionProviders: ['cpu'],
-    });
+    g.session = await createOrtSession(modelPath, sessions);
     g.inputName = g.session.inputNames[0];
     return g;
   }

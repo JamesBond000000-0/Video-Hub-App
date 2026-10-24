@@ -21,17 +21,16 @@
 
 import * as ort from "onnxruntime-node";
 import { toBlob, type RawImage } from "./image-ops";
+import { createOrtSession, type OrtSessionFactory } from "./ort-provider";
 
 export class LVFace {
   private session!: ort.InferenceSession;
   private inputName = "";
   private outputName = "";
 
-  static async create(modelPath: string): Promise<LVFace> {
+  static async create(modelPath: string, sessions?: OrtSessionFactory): Promise<LVFace> {
     const f = new LVFace();
-    f.session = await ort.InferenceSession.create(modelPath, {
-      executionProviders: ["cpu"],
-    });
+    f.session = await createOrtSession(modelPath, sessions);
     f.inputName = f.session.inputNames[0];
     f.outputName = f.session.outputNames[0];
     return f;
