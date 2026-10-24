@@ -18,6 +18,8 @@ tauri-build = { version = "2.7.4" }
 [dependencies]
 atomicwrites = "0.4"
 dirs = "6.0"
+image = "0.25"
+ort = { version = "=2.0.0-rc.15", default-features = false, features = ["std", "ndarray", "load-dynamic"] }
 md5 = "0.8"
 serde_json = "1.0"
 serde = { version = "1.0", features = ["derive"] }

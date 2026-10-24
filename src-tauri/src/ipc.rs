@@ -451,10 +451,15 @@ fn add_missing_thumbnails(
 
 fn face_model_status(window: &Window, state: &VhaState) -> Result<(), String> {
   let settings = state.face_settings()?;
+  let resolution = state.face_provider_info()?;
   emit_to_angular(
     window,
     "face-model-status-returning",
-    vec![face::model_status(&settings)],
+    vec![face::model_status_with(
+      &settings,
+      &face::face_models_root(),
+      resolution.as_ref(),
+    )],
   )
 }
 
@@ -503,33 +508,86 @@ fn face_store_for(state: &VhaState) -> Result<Option<face::FaceStore>, String> {
   }
 }
 
-/// Mirror of reclusterFaces in main-face.ts (the attribute pass is
-/// Phase C): a no-op unless face recognition is enabled, data exists,
-/// and the index matches the current model pack. Never fails the IPC.
-fn face_recluster(window: &Window, state: &VhaState) -> Result<(), String> {
-  if let Some(mut store) = face_store_for(state)? {
+/// Mirror of the face-recluster handler in main-face.ts: recluster,
+/// then recompute attributes (the elements argument feeds the video
+/// path registry), then return the payload. Never fails the IPC.
+fn face_recluster(window: &Window, state: &VhaState, args: &[Value]) -> Result<(), String> {
+  if let Some(hub) = state.current_hub()? {
     let settings = state.face_settings()?;
-    let enabled = settings
-      .get("enabled")
-      .and_then(Value::as_bool)
-      .unwrap_or(false);
-    if enabled && !store.model_mismatch && store.store_has_data() {
-      let threshold = settings
-        .get("clusterThreshold")
-        .and_then(Value::as_f64)
-        .unwrap_or(0.5);
-      if store.recluster(threshold).is_ok() {
-        let attributes_enabled = settings
-          .get("attributesEnabled")
-          .and_then(Value::as_bool)
-          .unwrap_or(false);
-        if !attributes_enabled {
-          let _ = store.clear_persons_attributes();
-        }
-      }
+    let mut store = face::hub_store(&hub.asset_folder, &settings);
+    crate::face_infer::recluster_pass(&settings, &mut store);
+    let elements = elements_arg(args, 0);
+    let registry = crate::face_infer::registry_for(&hub.input_dirs, &elements);
+    if let Some(info) = crate::face_infer::attributes_pass(&settings, &mut store, &registry) {
+      let _ = state.set_face_provider_info(info);
     }
   }
   face_get_index(window, state)
+}
+
+fn elements_arg(args: &[Value], index: usize) -> Vec<Value> {
+  args
+    .get(index)
+    .and_then(Value::as_array)
+    .cloned()
+    .unwrap_or_default()
+}
+
+/// Manual scan from Settings (face-scan-request): scan every element
+/// that has no face data yet in the background, then recluster,
+/// recompute attributes, and broadcast face-index-updated — the same
+/// sequence the Electron face queue drains into.
+fn face_scan_request(window: &Window, state: &VhaState, args: &[Value]) -> Result<(), String> {
+  let Some(hub) = state.current_hub()? else {
+    return Ok(());
+  };
+  let settings = state.face_settings()?;
+  let elements = elements_arg(args, 0);
+  let app = window.app_handle().clone();
+  std::thread::spawn(move || {
+    let provider_info = crate::face_infer::scan_missing_pass(
+      &settings,
+      &hub.asset_folder,
+      &hub.input_dirs,
+      &elements,
+    );
+    crate::face_infer::finish_face_pass(
+      &app,
+      &settings,
+      &hub.asset_folder,
+      &hub.input_dirs,
+      &elements,
+      provider_info,
+    );
+  });
+  Ok(())
+}
+
+/// Recompute person attributes (face-attributes-request): re-extract
+/// the sample frames for the elements given, aggregate, store, and
+/// return the payload.
+fn face_attributes_request(
+  window: &Window,
+  state: &VhaState,
+  args: &[Value],
+) -> Result<(), String> {
+  let Some(hub) = state.current_hub()? else {
+    return face_get_index(window, state);
+  };
+  let settings = state.face_settings()?;
+  let elements = elements_arg(args, 0);
+  let app = window.app_handle().clone();
+  let window = window.clone();
+  std::thread::spawn(move || {
+    let state = app.state::<VhaState>();
+    let mut store = face::hub_store(&hub.asset_folder, &settings);
+    let registry = crate::face_infer::registry_for(&hub.input_dirs, &elements);
+    if let Some(info) = crate::face_infer::attributes_pass(&settings, &mut store, &registry) {
+      let _ = state.set_face_provider_info(info);
+    }
+    let _ = emit_to_angular(&window, "face-index-returning", vec![store.payload()]);
+  });
+  Ok(())
 }
 
 fn face_rename_person(window: &Window, state: &VhaState, args: &[Value]) -> Result<(), String> {
@@ -659,13 +717,15 @@ pub fn ipc_send(
         .collect();
       state.set_additional_extensions(extensions)
     }
-    // Face recognition (docs/TAURI_FACE_PORT_DESIGN.md): Phase A
-    // read-only channels and Phase B clustering / person edits. Only the
-    // scan and attribute channels remain unsupported until Phase C.
+    // Face recognition (docs/TAURI_FACE_PORT_DESIGN.md): Phases A-C —
+    // model status / index, clustering and person edits, scanning and
+    // attributes.
     "face-get-model-status" => face_model_status(&window, &state),
     "face-get-index" => face_get_index(&window, &state),
     "face-settings-updated" => face_settings_updated(&window, &state, &args),
-    "face-recluster" => face_recluster(&window, &state),
+    "face-recluster" => face_recluster(&window, &state, &args),
+    "face-scan-request" => face_scan_request(&window, &state, &args),
+    "face-attributes-request" => face_attributes_request(&window, &state, &args),
     "face-rename-person" => face_rename_person(&window, &state, &args),
     "face-set-person-hidden" => face_set_person_hidden(&window, &state, &args),
     "face-merge-persons" => face_merge_persons(&window, &state, &args),

@@ -961,6 +961,9 @@ where
         report_job_error(&app, generation, "Media processing could not be completed", &error);
       }
     }
+    // Face auto-scan (autoScanNew): the Electron app feeds its face
+    // queue from the screenshot queue; this hook is the equivalent.
+    crate::face_infer::auto_scan_hook(&app);
     finish_job(&app, generation);
   });
 }

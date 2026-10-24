@@ -93,6 +93,17 @@ pub fn face_models_root() -> PathBuf {
     .join("face-models")
 }
 
+/// The resolved genderage.onnx path for the current pack (its own copy
+/// first, else the quality pack's), when one is placed.
+pub fn genderage_model_path(settings: &Value) -> Option<PathBuf> {
+  let path = genderage_path(settings, &face_models_root());
+  if path.as_os_str().is_empty() {
+    None
+  } else {
+    Some(path)
+  }
+}
+
 fn genderage_path(settings: &Value, models_root: &Path) -> PathBuf {
   let pack = pack_name(settings);
   let own = models_root.join(&pack).join("genderage.onnx");
@@ -108,14 +119,19 @@ fn genderage_path(settings: &Value, models_root: &Path) -> PathBuf {
   PathBuf::new()
 }
 
-/// Mirror of getFaceModelStatus in node/face/main-face.ts. Until the Rust
-/// inference worker exists (Phase C) the provider block reports "not
-/// resolved yet", exactly like Electron before its first worker report.
+/// Mirror of getFaceModelStatus in node/face/main-face.ts. The provider
+/// block reports the last engine resolution when a scan or attribute
+/// job has run in this process, and "not resolved yet" before that,
+/// exactly like Electron before its first worker report.
 pub fn model_status(settings: &Value) -> Value {
-  model_status_in(settings, &face_models_root())
+  model_status_with(settings, &face_models_root(), None)
 }
 
-pub fn model_status_in(settings: &Value, models_root: &Path) -> Value {
+pub fn model_status_with(
+  settings: &Value,
+  models_root: &Path,
+  provider_info: Option<&Value>,
+) -> Value {
   let pack = pack_name(settings);
   let info = pack_info(&pack);
   let models_dir = models_root.join(&pack);
@@ -135,13 +151,13 @@ pub fn model_status_in(settings: &Value, models_root: &Path) -> Value {
     "ready": ready,
     "genderagePath": if genderage_found { genderage.to_string_lossy().into_owned() } else { String::new() },
     "genderagePresent": genderage_found,
-    "providerInfo": {
+    "providerInfo": provider_info.cloned().unwrap_or_else(|| json!({
       "requested": normalize_provider(settings),
       "effective": Value::Null,
       "attempts": [],
       "cudaLibsPresent": false,
       "ortBinDir": ""
-    }
+    }))
   })
 }
 
@@ -310,6 +326,11 @@ impl FaceStore {
   #[allow(dead_code)]
   pub fn index(&self) -> &Value {
     &self.index
+  }
+
+  /// The hub's faces directory this store persists to.
+  pub fn faces_dir_path(&self) -> &Path {
+    &self.faces_dir
   }
 
   /// One stored embedding (512 float32 at embeddingIdx * 2048). The TS
@@ -619,6 +640,157 @@ impl FaceStore {
     self.save_index()?;
     Ok(true)
   }
+
+  /// True when a non-error entry exists for the hash (isScanned in TS;
+  /// errored videos are retried by later scan requests).
+  pub fn is_scanned(&self, hash: &str) -> bool {
+    self
+      .index
+      .get("videos")
+      .and_then(|videos| videos.get(hash))
+      .map(|entry| entry.get("status").and_then(Value::as_str) != Some("error"))
+      .unwrap_or(false)
+  }
+
+  /// Persist one video's scan result (setVideo in TS): appends the
+  /// embeddings to embeddings.bin, assigning each face its index, and
+  /// rewrites index.json atomically.
+  pub fn set_video(
+    &mut self,
+    hash: &str,
+    status: &str,
+    frame_count: i64,
+    faces: &[ScannedFace],
+    error: Option<&str>,
+  ) -> Result<(), String> {
+    self.assert_writable()?;
+    let mut records = Vec::with_capacity(faces.len());
+    if !faces.is_empty() {
+      use std::io::Write;
+      fs::create_dir_all(&self.faces_dir)
+        .map_err(|e| format!("Cannot create {}: {e}", self.faces_dir.display()))?;
+      let mut bin = fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(self.faces_dir.join("embeddings.bin"))
+        .map_err(|e| format!("Cannot open embeddings.bin: {e}"))?;
+      for (offset, face) in faces.iter().enumerate() {
+        records.push(json!({
+          "faceId": face.face_id,
+          "t": face.t,
+          "bbox": face.bbox,
+          "score": face.score,
+          "quality": face.quality,
+          "embeddingIdx": self.embeddings_stored + offset as u64,
+          "groupId": face.group_id,
+          "representative": face.representative
+        }));
+        let mut bytes = Vec::with_capacity(EMBEDDING_BYTES);
+        for value in &face.embedding {
+          bytes.extend_from_slice(&value.to_le_bytes());
+        }
+        bin
+          .write_all(&bytes)
+          .map_err(|e| format!("Cannot append embeddings: {e}"))?;
+      }
+      self.embeddings_stored += faces.len() as u64;
+    }
+    let mut entry = json!({
+      "status": status,
+      "scannedAt": now_millis(),
+      "frameCount": frame_count,
+      "faces": records
+    });
+    if let Some(error) = error {
+      entry["error"] = Value::String(error.to_string());
+    }
+    if let Some(videos) = self.index.get_mut("videos").and_then(Value::as_object_mut) {
+      videos.insert(hash.to_string(), entry);
+    }
+    self.save_index()
+  }
+
+  /// Record a failed scan without embeddings (setVideoError in TS).
+  pub fn set_video_error(
+    &mut self,
+    hash: &str,
+    frame_count: i64,
+    error: &str,
+  ) -> Result<(), String> {
+    self.set_video(hash, "error", frame_count, &[], Some(error))
+  }
+
+  /// Store freshly computed attribute aggregates (setPersonsAttributes;
+  /// persons not listed keep theirs).
+  pub fn set_persons_attributes(
+    &mut self,
+    results: &[(String, Value)],
+  ) -> Result<(), String> {
+    let mut changed = false;
+    if let Some(persons) = self.index.get_mut("persons").and_then(Value::as_array_mut) {
+      for person in persons.iter_mut() {
+        let id = person
+          .get("personId")
+          .and_then(Value::as_str)
+          .unwrap_or_default()
+          .to_string();
+        if let Some((_, attributes)) = results.iter().find(|(pid, _)| *pid == id) {
+          person["attributes"] = attributes.clone();
+          changed = true;
+        }
+      }
+    }
+    if changed {
+      self.save_index()?;
+    }
+    Ok(())
+  }
+
+  /// Wipe all face data for a hub (FaceStore.reset in TS; used when the
+  /// model pack changed and stored embeddings are incompatible).
+  pub fn reset(faces_dir: &Path, model_id: &str, cluster_threshold: f64) -> FaceStore {
+    for target in [
+      faces_dir.join("index.json"),
+      faces_dir.join("embeddings.bin"),
+      faces_dir.join("aligned"),
+      faces_dir.join("crops"),
+    ] {
+      let _ = if target.is_dir() {
+        fs::remove_dir_all(&target)
+      } else {
+        fs::remove_file(&target)
+      };
+    }
+    let store = FaceStore {
+      faces_dir: faces_dir.to_path_buf(),
+      index: empty_index(model_id, cluster_threshold),
+      embeddings_stored: 0,
+      model_mismatch: false,
+    };
+    let _ = store.save_index();
+    store
+  }
+}
+
+/// One face produced by a scan (ScannedFace in face-types.ts), carrying
+/// its recognition embedding until the store appends it to
+/// embeddings.bin and replaces it with an index.
+pub struct ScannedFace {
+  pub face_id: String,
+  pub t: f64,
+  pub bbox: [f64; 4],
+  pub score: f64,
+  pub quality: f64,
+  pub embedding: Vec<f32>,
+  pub group_id: i64,
+  pub representative: bool,
+}
+
+fn now_millis() -> i64 {
+  std::time::SystemTime::now()
+    .duration_since(std::time::UNIX_EPOCH)
+    .map(|d| d.as_millis() as i64)
+    .unwrap_or(0)
 }
 
 /// The payload for a hub: faces live in <asset folder>/faces.
@@ -662,7 +834,7 @@ mod tests {
   #[test]
   fn model_status_reports_missing_models() {
     let root = temp_dir("models-empty");
-    let status = model_status_in(&settings("quality"), &root);
+    let status = model_status_with(&settings("quality"), &root, None);
     assert_eq!(status["pack"], "quality");
     assert_eq!(status["modelId"], "buffalo_l-r50");
     assert_eq!(status["ready"], Value::Bool(false));
@@ -685,7 +857,7 @@ mod tests {
     fs::create_dir_all(&quality).expect("mkdir quality");
     fs::write(quality.join("genderage.onnx"), b"x").expect("genderage");
 
-    let status = model_status_in(&settings("light"), &root);
+    let status = model_status_with(&settings("light"), &root, None);
     assert_eq!(status["ready"], Value::Bool(true));
     assert_eq!(status["modelId"], "buffalo_sc-mbf");
     assert_eq!(status["genderagePresent"], Value::Bool(true));

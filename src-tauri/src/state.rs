@@ -22,6 +22,7 @@ pub struct CurrentHub {
 pub struct VhaState {
   settings_file: PathBuf,
   face_settings: Mutex<Value>,
+  face_provider_info: Mutex<Option<Value>>,
   current_hub: Mutex<Option<CurrentHub>>,
   system_messages: Mutex<Value>,
   additional_extensions: Mutex<Vec<String>>,
@@ -52,6 +53,7 @@ impl VhaState {
     Ok(Self {
       settings_file: settings_directory.join("settings.json"),
       face_settings: Mutex::new(crate::face::default_face_settings()),
+      face_provider_info: Mutex::new(None),
       current_hub: Mutex::new(None),
       system_messages: Mutex::new(system_messages),
       additional_extensions: Mutex::new(Vec::new()),
@@ -86,6 +88,27 @@ impl VhaState {
       .lock()
       .map_err(|_| "Face settings state is unavailable".to_string())? =
       crate::face::face_settings_with_defaults(final_object.get("faceSettings"));
+    Ok(())
+  }
+
+  /// The provider resolution reported by the most recent face engine
+  /// run in this process (Electron reports the worker's resolution in
+  /// the model status the same way).
+  pub fn face_provider_info(&self) -> Result<Option<Value>, String> {
+    Ok(
+      self
+        .face_provider_info
+        .lock()
+        .map_err(|_| "Face provider state is unavailable".to_string())?
+        .clone(),
+    )
+  }
+
+  pub fn set_face_provider_info(&self, info: Value) -> Result<(), String> {
+    *self
+      .face_provider_info
+      .lock()
+      .map_err(|_| "Face provider state is unavailable".to_string())? = Some(info);
     Ok(())
   }
 

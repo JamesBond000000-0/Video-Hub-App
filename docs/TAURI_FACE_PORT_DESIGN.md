@@ -117,18 +117,33 @@ Tauri/Rust（`src-tauri/`）へ移植するための差分設計である。レ�
   無効（属性が有効なハブでは次回スキャン/属性リクエスト時に再計算される、
   という Electron 側の元々のフォールバックと同じ挙動）。
 
-### Phase C: 推論 + スキャン
+### Phase C: 推論 + スキャン（実装済み）
 
 - `ort` クレートで SCRFD / ArcFace / LVFace / genderage のセッション管理と
   プロバイダ梯子（D9 の意味論を移植: 候補順、失敗理由の記録、CPU フォールバック）。
+  実装は `face_infer.rs`。ort は **2.0.0-rc.15（ONNX Runtime 1.31.0 世代）+
+  load-dynamic** とし、ライブラリは ORT_DYLIB_PATH → 実行ファイル隣 →
+  システムローダの順に解決する（バンドル方法は Phase D）。GPU プロバイダは
+  ort の機能フラグが要るため現ビルドでは「未収録」として梯子で失敗記録され
+  CPU に落ちる（意味論は維持、実機 GPU ビルドは Phase D）。
 - 画像処理: アライメント（5点類似変換 + ワープ）、リサイズ、JPEG 保存
   （crops / aligned）を `image` クレート等で実装。image-ops.ts と出力が
   近似一致することを確認する（切り抜きは表示用、aligned は属性用）。
-- スキャン: media.rs の ffmpeg 実行パターンを再利用してフレーム抽出 →
-  検出 → 認識 → ストア追記 → 再クラスタリング。進捗・キャンセルは
-  既存の background generation の仕組みに乗せる。`face-scan-request`、
+  → リサイズ/ワープは TS と同じ OpenCV 意味論の自前実装に置換済み。
+  JPEG のデコード/エンコードのみ `image` クレート。
+- スキャン: フレーム抽出（generateFaceFrameArgs と同一引数、ffmpeg は
+  VHA_FFMPEG_PATH → `ffmpeg`）→ 検出 → 認識 → ストア追記 →
+  再クラスタリング。`face-scan-request`（未スキャン分を背景スキャン）、
   `face-attributes-request`、`face-index-updated` 通知を有効化。
+  自動スキャン（autoScanNew）は media のジョブ完了フックから同じパスを
+  回す（Electron のスクリーンショットキュー→顔キューの等価物）。
 - 数値互換ゲート（T6）を最初に通すこと。
+  → **合格（2026-10-24 実測）**: golden 全7顔で埋め込みコサイン
+  **0.99964〜0.99986**、bbox 差 ≤0.19px、kps 差 ≤0.05px、性別全一致、
+  年齢差 ≤2歳。同条件のゲートテスト（環境変数ゲート付き）を
+  `face_infer.rs` に同梱。あわせて E2E スキャンテスト（静止画ループ
+  動画→60顔/6グループ/6人物、aligned 60・crops 6・embeddings.bin
+  60レコード）も合格。
 
 ### Phase D: パッケージング + 実機確認
 
@@ -140,8 +155,9 @@ Tauri/Rust（`src-tauri/`）へ移植するための差分設計である。レ�
 
 ## 4. 未決事項
 
-- Q1: `ort` クレートのバージョンと ONNX Runtime のバージョン対応
-  （onnxruntime-node 1.30 世代との数値差）。Phase C 冒頭で実測する。
+- Q1: ~~`ort` クレートのバージョンと ONNX Runtime のバージョン対応
+  （onnxruntime-node 1.30 世代との数値差）。Phase C 冒頭で実測する。~~
+  → 解決: ort 2.0.0-rc.15 / ORT 1.31.0 でゲート合格（Phase C 参照）。
 - Q2: ポータブル版（PORTABLE_EXECUTABLE_DIR）での face-models ルート。
   Electron ポータブル時の userData 解決に合わせる必要があれば Phase D で対応。
 - Q3: hub 保存時に Rust が faceSettings を FinalObject へ書き戻す必要があるか。

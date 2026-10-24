@@ -17,6 +17,77 @@ pub fn dot(a: &[f32], b: &[f32]) -> f64 {
   sum
 }
 
+/// Float32Array accumulation, as in TS meanVec (used by within-video
+/// grouping, whose centroids are recomputed from member embeddings).
+fn mean_vec(vectors: &[Vec<f32>]) -> Vec<f32> {
+  let dim = vectors[0].len();
+  let mut out = vec![0.0f32; dim];
+  for v in vectors {
+    for i in 0..dim {
+      out[i] = (out[i] as f64 + v[i] as f64) as f32;
+    }
+  }
+  for i in 0..dim {
+    out[i] = (out[i] as f64 / vectors.len() as f64) as f32;
+  }
+  out
+}
+
+pub struct WithinGroup {
+  pub members: Vec<usize>,
+  pub representative: usize,
+}
+
+/// Greedy centroid grouping in the given (time) order (groupWithinVideo
+/// in cluster.ts): a face joins the first group whose centroid
+/// similarity is >= threshold, otherwise it starts a new group. The
+/// representative is the highest-quality member (first one wins ties).
+pub fn group_within_video(
+  embeddings: &[Vec<f32>],
+  qualities: &[f64],
+  threshold: f64,
+) -> Vec<WithinGroup> {
+  struct Work {
+    members: Vec<usize>,
+    centroid: Vec<f32>,
+  }
+  let mut groups: Vec<Work> = Vec::new();
+  for (face_idx, embedding) in embeddings.iter().enumerate() {
+    let mut placed = false;
+    for group in groups.iter_mut() {
+      if dot(embedding, &group.centroid) >= threshold {
+        group.members.push(face_idx);
+        let member_vecs: Vec<Vec<f32>> =
+          group.members.iter().map(|m| embeddings[*m].clone()).collect();
+        group.centroid = l2normalize(&mean_vec(&member_vecs));
+        placed = true;
+        break;
+      }
+    }
+    if !placed {
+      groups.push(Work {
+        members: vec![face_idx],
+        centroid: embedding.clone(),
+      });
+    }
+  }
+  groups
+    .into_iter()
+    .map(|group| {
+      let mut representative = group.members[0];
+      for member in &group.members {
+        if qualities[*member] > qualities[representative] {
+          representative = *member;
+        }
+      }
+      WithinGroup {
+        members: group.members,
+        representative,
+      }
+    })
+    .collect()
+}
+
 fn l2normalize(v: &[f32]) -> Vec<f32> {
   let mut norm = 0.0f64;
   for x in v {
