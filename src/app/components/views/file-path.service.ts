@@ -56,14 +56,20 @@ export class FilePathService {
    * @param faceId     - face identifier from the face index
    */
   createFaceCropPath(folderPath: string, hubName: string, faceId: string): string {
-    return 'file://' + path.normalize(path.join(
+    const filePath = path.normalize(path.join(
       folderPath,
       'vha-' + hubName,
       'faces',
       'crops',
       faceId + '.jpg'
-    )).replace(/\\\\/g, '/')
-      .replace(/[ \\(\\)]/g, (match) => { return this.replaceMap[match]; });
+    ));
+
+    if (isTauri()) {
+      return convertFileSrc(filePath);
+    }
+
+    return 'file://' + filePath.replace(/\\/g, '/')
+      .replace(/[ \(\)]/g, (match) => { return this.replaceMap[match]; });
   }
 
   /**
