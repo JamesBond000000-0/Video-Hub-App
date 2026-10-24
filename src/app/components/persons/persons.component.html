@@ -10,7 +10,29 @@
         {{ 'PERSONS.recalcAttributes' | translate }}
       </button>
     }
+    @if (persons().length > 1) {
+      <button class="defaultSettingsButton" (click)="toggleMergeMode()">
+        {{ 'PERSONS.mergePeople' | translate }}
+      </button>
+    }
   </div>
+
+  @if (mergeMode) {
+    <div class="merge-bar">
+      <span>{{ 'PERSONS.mergeHint' | translate }}</span>
+      <button
+        class="defaultSettingsButton"
+        [disabled]="mergeSelection.size < 2"
+        (click)="requestMerge()"
+      >
+        {{ (mergeArmed ? 'PERSONS.confirmMerge' : 'PERSONS.merge') | translate }}
+        ({{ mergeSelection.size }})
+      </button>
+      <button class="defaultSettingsButton" (click)="toggleMergeMode()">
+        {{ 'PERSONS.cancel' | translate }}
+      </button>
+    </div>
+  }
 
   @if (persons().length === 0) {
     <div class="persons-empty">
@@ -23,6 +45,16 @@
     <div class="persons-grid">
       @for (person of persons(); track person.personId) {
         <div class="person-card" [ngClass]="{ 'person-hidden': person.hidden }">
+          @if (mergeMode) {
+            <label class="person-select">
+              <input
+                type="checkbox"
+                [checked]="mergeSelection.has(person.personId)"
+                (change)="toggleMergeSelection(person.personId)"
+              >
+              {{ 'PERSONS.mergeSelect' | translate }}
+            </label>
+          }
           <img
             class="person-crop"
             [src]="cropPath(person)"
@@ -59,9 +91,99 @@
           <button class="person-hide-button" (click)="toggleHidden(person)">
             {{ (person.hidden ? 'PERSONS.unhide' : 'PERSONS.hide') | translate }}
           </button>
+          <button class="person-hide-button" (click)="toggleGroups(person)">
+            {{ (expandedPersonId === person.personId ? 'PERSONS.hideGroups' : 'PERSONS.groups') | translate }}
+          </button>
         </div>
       }
     </div>
+
+    @if (expandedPerson(); as expanded) {
+      <div class="groups-panel">
+        <div class="groups-heading">
+          {{ 'PERSONS.groupsHeading' | translate }}: {{ personLabel(expanded) }}
+        </div>
+        @for (group of groupsOf(expanded); track group.key) {
+          <div class="group-row">
+            <input
+              type="checkbox"
+              [checked]="groupSelection.has(group.key)"
+              (change)="toggleGroupSelection(group.key)"
+            >
+            <img class="group-crop" [src]="groupCropPath(group)">
+            <span class="group-meta">
+              {{ group.videoHash.slice(0, 8) }}…
+              · {{ 'PERSONS.groupFaces' | translate: { faces: group.faceCount, time: formatTime(group.times[0]) } }}
+            </span>
+            @if (isRepresentativeGroup(expanded, group)) {
+              <span class="group-representative">{{ 'PERSONS.representative' | translate }}</span>
+            } @else {
+              <button class="person-hide-button" (click)="setRepresentative(expanded, group)">
+                {{ 'PERSONS.setRepresentative' | translate }}
+              </button>
+            }
+          </div>
+        }
+        @if (groupSelection.size > 0) {
+          <div class="group-actions">
+            <label>
+              {{ 'PERSONS.moveTo' | translate }}
+              <select [(ngModel)]="moveTarget" (ngModelChange)="groupActionArmed = false">
+                <option value=""></option>
+                <option value="__new__">{{ 'PERSONS.newPerson' | translate }}</option>
+                <option value="__none__">{{ 'PERSONS.unassigned' | translate }}</option>
+                @for (target of moveTargetPersons(expanded); track target.personId) {
+                  <option [value]="target.personId">{{ personLabel(target) }}</option>
+                }
+              </select>
+            </label>
+            <button
+              class="defaultSettingsButton"
+              [disabled]="!groupActionPossible(expanded)"
+              (click)="requestGroupAction(expanded)"
+            >
+              {{ (groupActionArmed ? 'PERSONS.confirmAction' : (moveTarget === '__new__' ? 'PERSONS.split' : 'PERSONS.move')) | translate }}
+            </button>
+            @if (moveTarget === '__new__' && !canSplitSelected(expanded)) {
+              <span class="group-hint">{{ 'PERSONS.splitHint' | translate }}</span>
+            }
+          </div>
+        }
+      </div>
+    }
+
+    @if (unassignedGroups().length > 0) {
+      <div class="groups-panel">
+        <div class="groups-heading">{{ 'PERSONS.unassignedGroups' | translate }}</div>
+        <div class="group-actions">
+          <label>
+            {{ 'PERSONS.moveTo' | translate }}
+            <select [(ngModel)]="unassignedMoveTarget">
+              <option value=""></option>
+              @for (target of faceService.persons; track target.personId) {
+                <option [value]="target.personId">{{ personLabel(target) }}</option>
+              }
+            </select>
+          </label>
+        </div>
+        @for (group of unassignedGroups(); track group.key) {
+          <div class="group-row">
+            <img class="group-crop" [src]="groupCropPath(group)">
+            <span class="group-meta">
+              {{ group.videoHash.slice(0, 8) }}…
+              · {{ 'PERSONS.groupFaces' | translate: { faces: group.faceCount, time: formatTime(group.times[0]) } }}
+            </span>
+            <button
+              class="person-hide-button"
+              [disabled]="unassignedMoveTarget === ''"
+              (click)="moveUnassignedGroup(group)"
+            >
+              {{ 'PERSONS.move' | translate }}
+            </button>
+          </div>
+        }
+      </div>
+    }
   }
 
 </div>

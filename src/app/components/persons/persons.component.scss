@@ -81,4 +81,73 @@
     opacity: 0.7;
     text-decoration: underline;
   }
+
+  .person-select {
+    cursor: pointer;
+    display: block;
+    font-size: 11px;
+    margin-bottom: 4px;
+  }
+}
+
+.merge-bar {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.groups-panel {
+  border-top: 1px solid rgba(128, 128, 128, 0.4);
+  margin-top: 14px;
+  padding-top: 10px;
+
+  .groups-heading {
+    font-weight: bold;
+    margin-bottom: 8px;
+  }
+
+  .group-row {
+    align-items: center;
+    display: flex;
+    gap: 10px;
+    margin-bottom: 6px;
+
+    .group-crop {
+      border-radius: 4px;
+      height: 48px;
+      object-fit: cover;
+      width: 48px;
+    }
+
+    .group-meta {
+      font-size: 12px;
+    }
+
+    .group-representative {
+      font-size: 11px;
+      font-weight: bold;
+    }
+
+    .person-hide-button {
+      background: none;
+      border: none;
+      cursor: pointer;
+      font-size: 11px;
+      opacity: 0.7;
+      text-decoration: underline;
+    }
+  }
+
+  .group-actions {
+    align-items: center;
+    display: flex;
+    gap: 10px;
+    margin: 8px 0;
+
+    .group-hint {
+      font-size: 11px;
+      opacity: 0.75;
+    }
+  }
 }

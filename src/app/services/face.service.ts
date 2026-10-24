@@ -26,6 +26,17 @@ export interface FaceGroupForDisplay {
   personId: string;             // person this group was clustered into ('' when unclustered)
 }
 
+/** One (video, within-video group) as used by the manual edit UI (Phase 3). */
+export interface PersonGroupInfo {
+  key: string;                  // "<videoHash>#<groupId>" -- the pin/edit unit
+  videoHash: string;
+  groupId: number;
+  representativeFaceId: string; // group representative (has a display crop)
+  faceCount: number;
+  times: number[];              // appearance times (seconds), ascending
+  personId: string;             // owning person ('' when unassigned)
+}
+
 /**
  * Renderer-side window onto face recognition (design doc §9.1):
  * holds the model placement status and the face index received from the
@@ -145,6 +156,75 @@ export class FaceService {
 
   setPersonHidden(personId: string, hidden: boolean): void {
     (window as any).myElectron.sendToMain('face-set-person-hidden', personId, hidden);
+  }
+
+  /** Merge 2+ persons into one (Phase 3; the survivor rule lives in main). */
+  mergePersons(personIds: string[]): void {
+    (window as any).myElectron.sendToMain('face-merge-persons', personIds);
+  }
+
+  /** Split the listed groups of a person off into a new person (Phase 3). */
+  splitPerson(personId: string, groupKeys: string[]): void {
+    (window as any).myElectron.sendToMain('face-split-person', personId, groupKeys);
+  }
+
+  /** Move groups to another person, or to unassigned when null (Phase 3). */
+  moveGroups(groupKeys: string[], targetPersonId: string | null): void {
+    (window as any).myElectron.sendToMain('face-move-groups', groupKeys, targetPersonId);
+  }
+
+  /** Pin a person's representative face (Phase 3). */
+  setPersonRepresentative(personId: string, faceId: string): void {
+    (window as any).myElectron.sendToMain('face-set-person-representative', personId, faceId);
+  }
+
+  /**
+   * All (video, group)s belonging to a person, across videos (Phase 3).
+   * Pass '' for the groups no person currently owns (unassigned),
+   * e.g. after a group was manually moved back to unassigned.
+   */
+  groupsOfPerson(personId: string): PersonGroupInfo[] {
+    if (!this.faceIndex || !this.faceIndex.videos) {
+      return [];
+    }
+    const byKey = new Map<string, PersonGroupInfo>();
+    Object.keys(this.faceIndex.videos).forEach((hash) => {
+      const entry = this.faceIndex.videos[hash];
+      if (!entry || !entry.faces) {
+        return;
+      }
+      entry.faces.forEach((face) => {
+        if (face.groupId < 0 || (face.personId || '') !== personId) {
+          return;
+        }
+        const key = hash + '#' + face.groupId;
+        if (!byKey.has(key)) {
+          byKey.set(key, {
+            key,
+            videoHash: hash,
+            groupId: face.groupId,
+            representativeFaceId: '',
+            faceCount: 0,
+            times: [],
+            personId,
+          });
+        }
+        const group = byKey.get(key);
+        group.faceCount++;
+        group.times.push(face.t);
+        if (face.representative) {
+          group.representativeFaceId = face.faceId;
+        }
+      });
+    });
+    const result: PersonGroupInfo[] = [];
+    byKey.forEach((group) => {
+      group.times.sort((a, b) => a - b);
+      if (group.representativeFaceId) {
+        result.push(group);
+      }
+    });
+    return result.sort((a, b) => (b.faceCount - a.faceCount) || (a.key < b.key ? -1 : 1));
   }
 
   sendSettings(settings: FaceSettings): void {
