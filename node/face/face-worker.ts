@@ -1,7 +1,7 @@
 // Face worker: entry point for the Electron utility process (design §9.1).
 // Owns the ONNX sessions so the main process never blocks on inference.
 // Protocol (structured-clone messages over process.parentPort):
-//   in : { type: 'init', detModelPath, recModelPath }
+//   in : { type: 'init', detModelPath, recModelPath, recKind }
 //        { type: 'scan', jobId, job: FaceScanJob }
 //        { type: 'attributes', jobId, job: FaceAttributesJob }
 //   out: { type: 'ready' } | { type: 'init-error', message }
@@ -38,12 +38,12 @@ function post(message: unknown): void {
   }
 }
 
-async function getEngine(detModelPath: string, recModelPath: string): Promise<FaceEngine> {
+async function getEngine(detModelPath: string, recModelPath: string, recKind: FaceScanJob['recKind']): Promise<FaceEngine> {
   if (engine) {
     return engine;
   }
   if (!enginePromise) {
-    enginePromise = FaceEngine.create(detModelPath, recModelPath).then((created) => {
+    enginePromise = FaceEngine.create(detModelPath, recModelPath, recKind).then((created) => {
       engine = created;
       return created;
     });
@@ -128,7 +128,7 @@ if (parentPort) {
     }
     if (message.type === 'init') {
       try {
-        await getEngine(message.detModelPath, message.recModelPath);
+        await getEngine(message.detModelPath, message.recModelPath, message.recKind || 'arcface');
         post({ type: 'ready' });
       } catch (err) {
         post({ type: 'init-error', message: String(err) });
@@ -136,7 +136,7 @@ if (parentPort) {
     } else if (message.type === 'scan') {
       const job = message.job as FaceScanJob;
       try {
-        const eng = await getEngine(job.detModelPath, job.recModelPath);
+        const eng = await getEngine(job.detModelPath, job.recModelPath, job.recKind);
         const result: FaceScanResult = await eng.scanVideo(job);
         post({ type: 'result', jobId: message.jobId, result });
       } catch (err) {

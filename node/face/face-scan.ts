@@ -7,15 +7,16 @@ import { generateFaceFrameArgs } from '../main-extract';
 import { ArcFace, normCrop } from './arcface';
 import { groupWithinVideo } from './cluster';
 import { decodeImage, encodeJpeg, resizeBilinear, type RawImage } from './image-ops';
+import { LVFace } from './lvface';
 import { Scrfd, type DetectedFace } from './scrfd';
-import { WITHIN_VIDEO_THRESHOLD, type FaceScanJob, type FaceScanResult, type ScannedFace } from './face-types';
+import { WITHIN_VIDEO_THRESHOLD, type FaceScanJob, type FaceScanResult, type RecognizerKind, type ScannedFace } from './face-types';
 import { FaceStore } from './face-store';
 
 const ffmpegPath = require('ffmpeg-static').replace('app.asar', 'app.asar.unpacked');
 
 // ============================================================================
 // Per-video face scan pipeline (design doc §5.1-§5.5):
-// sample frames -> SCRFD detect -> filter -> align -> ArcFace embedding ->
+// sample frames -> SCRFD detect -> filter -> align -> recognition embedding ->
 // thumbnails -> within-video grouping. Pure Node (no Electron imports) so it
 // can run inside the utility-process worker and in a plain Node harness.
 // ============================================================================
@@ -121,12 +122,12 @@ function displayCrop(img: RawImage, face: DetectedFace): RawImage {
 
 export class FaceEngine {
   private detector!: Scrfd;
-  private recognizer!: ArcFace;
+  private recognizer!: ArcFace | LVFace;
 
-  static async create(detModelPath: string, recModelPath: string): Promise<FaceEngine> {
+  static async create(detModelPath: string, recModelPath: string, recKind: RecognizerKind = 'arcface'): Promise<FaceEngine> {
     const engine = new FaceEngine();
     engine.detector = await Scrfd.create(detModelPath);
-    engine.recognizer = await ArcFace.create(recModelPath);
+    engine.recognizer = recKind === 'lvface' ? await LVFace.create(recModelPath) : await ArcFace.create(recModelPath);
     return engine;
   }
 

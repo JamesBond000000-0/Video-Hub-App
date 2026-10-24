@@ -5,11 +5,18 @@ import type { FaceModelPack } from '../../interfaces/final-object.interface';
 // The face index lives in the hub folder: faces/index.json + embeddings.bin
 // ============================================================================
 
+// Which recognizer implementation consumes a pack's recFile. The two
+// implementations share the input contract (aligned 112x112 crop,
+// (px - 127.5) / 127.5, 512-d L2-normalized output) but their embedding
+// spaces are incompatible, hence the distinct modelIds below.
+export type RecognizerKind = 'arcface' | 'lvface';
+
 export interface FaceModelPackInfo {
   pack: FaceModelPack;
   modelId: string;          // recorded in index.json; mismatch invalidates the index
   detFile: string;          // SCRFD detector model file name
-  recFile: string;          // ArcFace recognition model file name
+  recFile: string;          // recognition model file name
+  recKind: RecognizerKind;  // recognizer implementation for recFile
 }
 
 // Design doc Appendix A: only the det + rec models of each pack are used
@@ -19,12 +26,25 @@ export const FACE_MODEL_PACKS: Record<FaceModelPack, FaceModelPackInfo> = {
     modelId: 'buffalo_l-r50',
     detFile: 'det_10g.onnx',
     recFile: 'w600k_r50.onnx',
+    recKind: 'arcface',
   },
   light: {
     pack: 'light',
     modelId: 'buffalo_sc-mbf',
     detFile: 'det_500m.onnx',
     recFile: 'w600k_mbf.onnx',
+    recKind: 'arcface',
+  },
+  // Decision D8: detection is identical to quality (det_10g); recognition
+  // is LVFace-T (ByteDance, Glint360K weights). The recFile name is the
+  // file name as distributed on HuggingFace (bytedance-research/LVFace)
+  // so users can place the download as-is.
+  lvface: {
+    pack: 'lvface',
+    modelId: 'lvface-t-glint360k',
+    detFile: 'det_10g.onnx',
+    recFile: 'LVFace-T_Glint360K.onnx',
+    recKind: 'lvface',
   },
 };
 
@@ -151,6 +171,7 @@ export interface FaceScanJob {
   minFaceSizePx: number;
   detModelPath: string;
   recModelPath: string;
+  recKind: RecognizerKind;
 }
 
 // Within-video grouping threshold (§5.5, decision D5: T_in = 0.50)

@@ -32,7 +32,9 @@ export function getFaceModelsRoot(): string {
 }
 
 // genderage.onnx ships only in the buffalo_l pack (design Appendix A), so
-// the light pack borrows the quality pack's copy for attribute estimation.
+// the light and lvface packs borrow the quality pack's copy for attribute
+// estimation. (genderage consumes frame crops, not recognition embeddings,
+// so it is independent of the recognizer -- see §5.8 / decision D8.)
 export function getGenderageModelPath(settings: FaceSettings): string {
   const own = path.join(getFaceModelsRoot(), settings.modelPack, 'genderage.onnx');
   if (fs.existsSync(own)) {
@@ -196,6 +198,7 @@ function ensureWorker(settings: FaceSettings): Promise<void> {
       type: 'init',
       detModelPath: path.join(modelsDir, info.detFile),
       recModelPath: path.join(modelsDir, info.recFile),
+      recKind: info.recKind,
     });
   });
   return workerReady;
@@ -241,6 +244,7 @@ export async function scanVideoFaces(element: ImageElement, videoFolderPath: str
     minFaceSizePx: settings.minFaceSizePx,
     detModelPath: path.join(status.modelsDir, FACE_MODEL_PACKS[settings.modelPack].detFile),
     recModelPath: path.join(status.modelsDir, FACE_MODEL_PACKS[settings.modelPack].recFile),
+    recKind: FACE_MODEL_PACKS[settings.modelPack].recKind,
   };
   try {
     await ensureWorker(settings);

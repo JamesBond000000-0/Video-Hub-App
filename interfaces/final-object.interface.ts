@@ -110,13 +110,13 @@ export interface ScreenshotSettings {
   n: number;
 }
 
-export type FaceModelPack = 'quality' | 'light';
+export type FaceModelPack = 'quality' | 'light' | 'lvface';
 
 // Face recognition settings (design doc: docs/FACE_RECOGNITION_DESIGN.md §7).
 // Saved inside the .vha2 file; face data itself lives in the hub's faces/ folder.
 export interface FaceSettings {
   enabled: boolean;                // opt-in: face scanning (default off)
-  modelPack: FaceModelPack;        // 'quality' = buffalo_l (det_10g + w600k_r50); 'light' = buffalo_sc (det_500m + w600k_mbf)
+  modelPack: FaceModelPack;        // 'quality' = buffalo_l (det_10g + w600k_r50); 'light' = buffalo_sc (det_500m + w600k_mbf); 'lvface' = det_10g + LVFace-T
   maxFramesPerVideo: number;       // cap for the §5.1 frame sampling
   sampleIntervalSec: number;       // base interval for the §5.1 frame sampling
   minFaceSizePx: number;           // faces smaller than this are discarded (§5.2)
