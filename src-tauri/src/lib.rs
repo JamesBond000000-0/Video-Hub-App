@@ -1,4 +1,5 @@
 mod face;
+mod face_cluster;
 mod hub;
 mod ipc;
 mod media;

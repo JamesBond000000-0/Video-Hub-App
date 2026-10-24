@@ -473,6 +473,121 @@ fn face_settings_updated(window: &Window, state: &VhaState, args: &[Value]) -> R
   face_model_status(window, state)
 }
 
+fn string_arg(args: &[Value], index: usize) -> String {
+  args
+    .get(index)
+    .and_then(Value::as_str)
+    .unwrap_or_default()
+    .to_string()
+}
+
+fn string_vec_arg(args: &[Value], index: usize) -> Vec<String> {
+  args
+    .get(index)
+    .and_then(Value::as_array)
+    .map(|items| {
+      items
+        .iter()
+        .filter_map(Value::as_str)
+        .map(str::to_string)
+        .collect()
+    })
+    .unwrap_or_default()
+}
+
+fn face_store_for(state: &VhaState) -> Result<Option<face::FaceStore>, String> {
+  let settings = state.face_settings()?;
+  match state.current_hub()? {
+    Some(hub) => Ok(Some(face::hub_store(&hub.asset_folder, &settings))),
+    None => Ok(None),
+  }
+}
+
+/// Mirror of reclusterFaces in main-face.ts (the attribute pass is
+/// Phase C): a no-op unless face recognition is enabled, data exists,
+/// and the index matches the current model pack. Never fails the IPC.
+fn face_recluster(window: &Window, state: &VhaState) -> Result<(), String> {
+  if let Some(mut store) = face_store_for(state)? {
+    let settings = state.face_settings()?;
+    let enabled = settings
+      .get("enabled")
+      .and_then(Value::as_bool)
+      .unwrap_or(false);
+    if enabled && !store.model_mismatch && store.store_has_data() {
+      let threshold = settings
+        .get("clusterThreshold")
+        .and_then(Value::as_f64)
+        .unwrap_or(0.5);
+      if store.recluster(threshold).is_ok() {
+        let attributes_enabled = settings
+          .get("attributesEnabled")
+          .and_then(Value::as_bool)
+          .unwrap_or(false);
+        if !attributes_enabled {
+          let _ = store.clear_persons_attributes();
+        }
+      }
+    }
+  }
+  face_get_index(window, state)
+}
+
+fn face_rename_person(window: &Window, state: &VhaState, args: &[Value]) -> Result<(), String> {
+  if let Some(mut store) = face_store_for(state)? {
+    let name = string_arg(args, 1);
+    if store.rename_person(&string_arg(args, 0), name.trim()) {
+      return face_get_index(window, state);
+    }
+  }
+  Ok(())
+}
+
+fn face_set_person_hidden(window: &Window, state: &VhaState, args: &[Value]) -> Result<(), String> {
+  if let Some(mut store) = face_store_for(state)? {
+    let hidden = args.get(1).and_then(Value::as_bool).unwrap_or(false);
+    if store.set_person_hidden(&string_arg(args, 0), hidden) {
+      return face_get_index(window, state);
+    }
+  }
+  Ok(())
+}
+
+fn face_merge_persons(window: &Window, state: &VhaState, args: &[Value]) -> Result<(), String> {
+  if let Some(mut store) = face_store_for(state)? {
+    let _ = store.merge_persons(string_vec_arg(args, 0));
+  }
+  face_get_index(window, state)
+}
+
+fn face_split_person(window: &Window, state: &VhaState, args: &[Value]) -> Result<(), String> {
+  if let Some(mut store) = face_store_for(state)? {
+    let _ = store.split_person(&string_arg(args, 0), string_vec_arg(args, 1));
+  }
+  face_get_index(window, state)
+}
+
+fn face_move_groups(window: &Window, state: &VhaState, args: &[Value]) -> Result<(), String> {
+  if let Some(mut store) = face_store_for(state)? {
+    let target = args
+      .get(1)
+      .and_then(Value::as_str)
+      .map(str::to_string);
+    let _ = store.move_groups(string_vec_arg(args, 0), target);
+  }
+  face_get_index(window, state)
+}
+
+fn face_set_person_representative(
+  window: &Window,
+  state: &VhaState,
+  args: &[Value],
+) -> Result<(), String> {
+  if let Some(mut store) = face_store_for(state)? {
+    let _ = store.set_person_representative(&string_arg(args, 0), &string_arg(args, 1));
+  }
+  face_get_index(window, state)
+}
+
 fn unsupported_channel(window: &Window, state: &VhaState, channel: &str) -> Result<(), String> {
   let error = format!("IPC channel '{channel}' has not been ported to the Tauri backend yet");
   show_error(
@@ -544,12 +659,21 @@ pub fn ipc_send(
         .collect();
       state.set_additional_extensions(extensions)
     }
-    // Face recognition, Phase A (docs/TAURI_FACE_PORT_DESIGN.md): the
-    // read-only channels. Scan / recluster / person edits stay unsupported
-    // until Phases B and C land.
+    // Face recognition (docs/TAURI_FACE_PORT_DESIGN.md): Phase A
+    // read-only channels and Phase B clustering / person edits. Only the
+    // scan and attribute channels remain unsupported until Phase C.
     "face-get-model-status" => face_model_status(&window, &state),
     "face-get-index" => face_get_index(&window, &state),
     "face-settings-updated" => face_settings_updated(&window, &state, &args),
+    "face-recluster" => face_recluster(&window, &state),
+    "face-rename-person" => face_rename_person(&window, &state, &args),
+    "face-set-person-hidden" => face_set_person_hidden(&window, &state, &args),
+    "face-merge-persons" => face_merge_persons(&window, &state, &args),
+    "face-split-person" => face_split_person(&window, &state, &args),
+    "face-move-groups" => face_move_groups(&window, &state, &args),
+    "face-set-person-representative" => {
+      face_set_person_representative(&window, &state, &args)
+    }
     // Touch Bar integration is macOS/Electron-specific. Settings restoration
     // sends these messages even on platforms where there is nothing to update.
     "app-to-touchBar" => Ok(()),

@@ -99,14 +99,20 @@ Tauri/Rust（`src-tauri/`）へ移植するための差分設計である。レ�
 - 検証: Rust 単体テスト（モデル配置・genderage 借用・stats・personsByVideo・
   mismatch・空ディレクトリ）。tsc / cargo test の既存ライン維持。
 
-### Phase B: 純粋ロジック（クラスタリング + ストア編集）
+### Phase B: 純粋ロジック（クラスタリング + ストア編集）（実装済み）
 
 - cluster.ts（全体クラスタリング、ピン保持、index 編集ヘルパ群）と
   face-store.ts の編集系を移植: `face-recluster`、`face-rename-person`、
   `face-set-person-hidden`、`face-merge-persons`、`face-split-person`、
   `face-move-groups`、`face-set-person-representative`。
+  実装は `face_cluster.rs`（純関数群）+ `face.rs` の FaceStore。
+  数値の再現のため、ベクトル平均は Float32Array の格納丸めまで模倣し、
+  類似度計算は f32 値に対する f64 演算とした。
 - embeddings.bin の読み出しのみで推論は不要。検証は TS 実装との
   クロスチェック（同一 index + embeddings に対する結果一致）で行う。
+  → 実施済み: 合成ハブ（3動画7顔）で再クラスタリング + 名前/非表示/
+  マージ/分割/移動/代表顔の一連の操作を両実装で実行し、保存後の
+  index.json が値として完全一致した。同条件の単体テストも同梱。
 - 属性の再計算フック（編集後の computeFaceAttributes）は Phase C まで
   無効（属性が有効なハブでは次回スキャン/属性リクエスト時に再計算される、
   という Electron 側の元々のフォールバックと同じ挙動）。
