@@ -1,0 +1,59 @@
+name: Tauri Windows Release (test)
+
+# Builds the experimental Tauri runtime on Windows and publishes the
+# bundles as a GitHub prerelease. Trigger by pushing a tag like
+# `tauri-v3.3.0-test.1`, or run manually with workflow_dispatch and
+# provide the tag to create.
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to create (e.g. tauri-v3.3.0-test.1)'
+        required: true
+        default: 'tauri-v3.3.0-test.1'
+  push:
+    tags:
+      - 'tauri-v*'
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust build
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Install JS dependencies
+        run: npm install --legacy-peer-deps
+
+      - name: Build Tauri app and publish prerelease
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ inputs.tag || github.ref_name }}
+          releaseName: 'Video Hub App 3 - Tauri test ${{ inputs.tag || github.ref_name }}'
+          releaseBody: |
+            Experimental Tauri 2 build of Video Hub App 3 for Windows testing.
+            Unsigned test build; Windows SmartScreen may warn on first run.
+            See TAURI_MIGRATION.md in the repository for the migration status
+            and the manual test checklist.
+          releaseDraft: false
+          prerelease: true
+          args: --bundles nsis,msi
