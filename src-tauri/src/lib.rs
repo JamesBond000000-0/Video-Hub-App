@@ -23,6 +23,11 @@ pub fn run() {
         .map_err(|error| -> Box<dyn std::error::Error> { error.into() })?;
       app.manage(state);
 
+      // The bundled ONNX Runtime library lives in the resource dir.
+      if let Ok(resource_dir) = app.path().resource_dir() {
+        face_infer::set_resource_dir_hint(resource_dir);
+      }
+
       if cfg!(debug_assertions) {
         app.handle().plugin(
           tauri_plugin_log::Builder::default()

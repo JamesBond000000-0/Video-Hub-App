@@ -123,9 +123,9 @@ Tauri/Rust（`src-tauri/`）へ移植するための差分設計である。レ�
   プロバイダ梯子（D9 の意味論を移植: 候補順、失敗理由の記録、CPU フォールバック）。
   実装は `face_infer.rs`。ort は **2.0.0-rc.15（ONNX Runtime 1.31.0 世代）+
   load-dynamic** とし、ライブラリは ORT_DYLIB_PATH → 実行ファイル隣 →
-  システムローダの順に解決する（バンドル方法は Phase D）。GPU プロバイダは
-  ort の機能フラグが要るため現ビルドでは「未収録」として梯子で失敗記録され
-  CPU に落ちる（意味論は維持、実機 GPU ビルドは Phase D）。
+  Tauri リソース dir → システムローダの順に解決する。GPU プロバイダの
+  登録コードは Phase D でプラットフォーム別にコンパイルされ、
+  プロバイダライブラリが無い環境では失敗が記録されて CPU に落ちる。
 - 画像処理: アライメント（5点類似変換 + ワープ）、リサイズ、JPEG 保存
   （crops / aligned）を `image` クレート等で実装。image-ops.ts と出力が
   近似一致することを確認する（切り抜きは表示用、aligned は属性用）。
@@ -145,13 +145,32 @@ Tauri/Rust（`src-tauri/`）へ移植するための差分設計である。レ�
   動画→60顔/6グループ/6人物、aligned 60・crops 6・embeddings.bin
   60レコード）も合格。
 
-### Phase D: パッケージング + 実機確認
+### Phase D: パッケージング + 実機確認（実装済み・VM 検証済み、実機確認は残）
 
-- ONNX Runtime バイナリの同梱方法（ort の download-binaries / load-dynamic、
-  プラットフォーム別 EP: DirectML / CoreML / CUDA の扱い）と
-  Tauri バンドル設定。CUDA は node 版と同様「ユーザー配置」方式の可否を検討。
-- 実機確認: モデル配置済み環境でのスキャン、人物表示・編集、Electron で
-  作ったハブとの相互運用（同じ faces を両ランタイムで開く）。
+- ORT バンドル: 公式リリース 1.31.0 の共有ライブラリを Tauri リソース
+  として同梱する。`src-tauri/fetch-ort.sh` がプラットフォーム別に
+  取得し（リリース CI でも実行）、`tauri.<platform>.conf.json` の
+  resources マップでリソースルート直下に配置される。実行時の解決順は
+  ORT_DYLIB_PATH → 実行ファイル隣 (+lib/) → Tauri リソース dir
+  （lib.rs の setup が `face_infer::set_resource_dir_hint` で登録、
+  +lib/・+resources/ も探索）→ システムローダ。
+- GPU EP: Cargo.toml の target 別依存で ort 機能を有効化
+  （Windows: cuda + directml、macOS: coreml、Linux: cuda）し、
+  face_infer の梯子が同じ cfg で登録コードをコンパイルする。
+  プロバイダ用ライブラリが無い環境では試行が失敗として記録され
+  CPU に落ちる（Electron 版と同じ意味論）。同梱するのは CPU パッケージ
+  のライブラリで、CUDA / DirectML のプロバイダライブラリは Electron 版
+  と同様に別途配置（ORT の DirectML/CUDA パッケージは GitHub リリース
+  には無く NuGet / CUDA 配布側にあるため同梱しない）。
+- macOS の制約: ORT 1.31.0 の macOS パッケージは arm64 のみのため、
+  Intel Mac では ORT がロードできず顔認識だけ無効になる
+  （アプリ本体はユニバーサルで動作する）。
+- VM 検証: Linux で CUDA 機能入りビルドの cargo test 17/17、
+  golden ゲートに auto 梯子の確認を追加（CUDA を最初に試行・記録し
+  CPU 解決）。deb ビルドで `usr/lib/<app>/` 直下への
+  libonnxruntime.so（29.3MB）の配置と、抽出ツリーからの xvfb 起動を
+  確認。実機確認（Win/Mac のインストール・実 GPU・Electron 製ハブとの
+  相互運用）はユーザー環境で実施。
 
 ## 4. 未決事項
 
@@ -159,8 +178,11 @@ Tauri/Rust（`src-tauri/`）へ移植するための差分設計である。レ�
   （onnxruntime-node 1.30 世代との数値差）。Phase C 冒頭で実測する。~~
   → 解決: ort 2.0.0-rc.15 / ORT 1.31.0 でゲート合格（Phase C 参照）。
 - Q2: ポータブル版（PORTABLE_EXECUTABLE_DIR）での face-models ルート。
-  Electron ポータブル時の userData 解決に合わせる必要があれば Phase D で対応。
-- Q3: hub 保存時に Rust が faceSettings を FinalObject へ書き戻す必要があるか。
-  Electron は main の GLOBALS から書き戻す。Tauri ではレンダラが送る
-  FinalObject に faceSettings が含まれていれば不要 — Phase A/B の間に
-  保存フローを実測して確定する。
+  Tauri 側にポータブル配布形態が無く、当面は OS 標準の config_dir で
+  Electron 版（非ポータブル）と一致する。ポータブル配布を作る場合は
+  モデルルートの上書き手段が別途必要（未対応として記録）。
+- Q3: ~~hub 保存時に Rust が faceSettings を FinalObject へ書き戻す
+  必要があるか~~ → 不要と確定（実測）: レンダラの保存フロー
+  （home.component.ts）が `faceSettings: this.currentFaceSettings` を
+  FinalObject に含めて送るため、.vha2 には常に入る。Rust 側の
+  VhaState ミラーは開封時に FinalObject から初期化される。

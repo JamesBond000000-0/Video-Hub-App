@@ -38,6 +38,8 @@ jobs:
               'Unsigned test build: Windows SmartScreen and macOS Gatekeeper may warn on first run',
               '(on macOS, run `xattr -cr` on the app if it is reported as damaged).',
               'ffmpeg/ffprobe must be on PATH (or configured in the app) for thumbnails.',
+              'Face recognition is included (ONNX Runtime 1.31.0 bundled); place the face models',
+              'in the folder shown in Settings, as with the Electron build.',
               'See TAURI_MIGRATION.md in the repository for the migration status and checklist.',
             ].join('\n');
             try {
@@ -103,6 +105,10 @@ jobs:
 
       - name: Install JS dependencies
         run: npm install --legacy-peer-deps
+
+      - name: Fetch ONNX Runtime for the face engine
+        shell: bash
+        run: bash src-tauri/fetch-ort.sh
 
       - name: Build Tauri app and upload to prerelease
         uses: tauri-apps/tauri-action@v0

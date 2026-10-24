@@ -303,9 +303,65 @@ fn first_line(error: &str) -> String {
   error.lines().next().unwrap_or_default().chars().take(300).collect()
 }
 
-/// Locate the ONNX Runtime shared library: ORT_DYLIB_PATH, then next to
-/// the executable (the Phase D bundle placement), else None (system
-/// loader search via ort::init).
+/// Build the execution-provider dispatch for a ladder candidate. The
+/// registrations are compiled per platform, matching the target-gated
+/// ort features in Cargo.toml (Phase D): Windows gets CUDA + DirectML,
+/// macOS CoreML, Linux CUDA. A provider this platform cannot offer —
+/// or whose runtime libraries the loaded ONNX Runtime lacks — fails
+/// here or at session creation and is recorded by the ladder.
+#[cfg(target_os = "windows")]
+fn execution_provider(name: &str) -> Result<ort::ep::ExecutionProviderDispatch, String> {
+  use ort::ep::ExecutionProvider;
+  match name {
+    "cuda" => Ok(ort::ep::CUDA::default().build()),
+    "directml" => Ok(ort::ep::DirectML::default().build()),
+    other => Err(format!(
+      "execution provider '{other}' is not compiled into this build"
+    )),
+  }
+}
+
+#[cfg(target_os = "macos")]
+fn execution_provider(name: &str) -> Result<ort::ep::ExecutionProviderDispatch, String> {
+  use ort::ep::ExecutionProvider;
+  match name {
+    "coreml" => Ok(ort::ep::CoreML::default().build()),
+    other => Err(format!(
+      "execution provider '{other}' is not compiled into this build"
+    )),
+  }
+}
+
+#[cfg(target_os = "linux")]
+fn execution_provider(name: &str) -> Result<ort::ep::ExecutionProviderDispatch, String> {
+  use ort::ep::ExecutionProvider;
+  match name {
+    "cuda" => Ok(ort::ep::CUDA::default().build()),
+    other => Err(format!(
+      "execution provider '{other}' is not compiled into this build"
+    )),
+  }
+}
+
+#[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
+fn execution_provider(name: &str) -> Result<ort::ep::ExecutionProviderDispatch, String> {
+  Err(format!(
+    "execution provider '{name}' is not compiled into this build"
+  ))
+}
+
+static RESOURCE_DIR_HINT: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
+
+/// Tell the loader where Tauri placed the app's bundled resources
+/// (called once from the app setup; the ONNX Runtime library ships as
+/// a bundle resource, see src-tauri/fetch-ort.sh).
+pub fn set_resource_dir_hint(dir: PathBuf) {
+  let _ = RESOURCE_DIR_HINT.set(dir);
+}
+
+/// Locate the ONNX Runtime shared library: ORT_DYLIB_PATH, then next
+/// to the executable, then the Tauri resource dir (the bundle
+/// placement), else None (system loader search via ort::init).
 pub fn onnxruntime_dylib() -> Option<PathBuf> {
   if let Some(path) = std::env::var_os("ORT_DYLIB_PATH") {
     return Some(PathBuf::from(path));
@@ -317,13 +373,22 @@ pub fn onnxruntime_dylib() -> Option<PathBuf> {
   } else {
     "libonnxruntime.so"
   };
+  let mut search_dirs: Vec<PathBuf> = Vec::new();
   if let Ok(exe) = std::env::current_exe() {
     if let Some(dir) = exe.parent() {
-      for candidate in [dir.join(file_name), dir.join("lib").join(file_name)] {
-        if candidate.exists() {
-          return Some(candidate);
-        }
-      }
+      search_dirs.push(dir.to_path_buf());
+      search_dirs.push(dir.join("lib"));
+    }
+  }
+  if let Some(dir) = RESOURCE_DIR_HINT.get() {
+    search_dirs.push(dir.clone());
+    search_dirs.push(dir.join("lib"));
+    search_dirs.push(dir.join("resources"));
+  }
+  for dir in search_dirs {
+    let candidate = dir.join(file_name);
+    if candidate.exists() {
+      return Some(candidate);
     }
   }
   None
@@ -427,17 +492,11 @@ impl OrtSessionFactory {
     let env = self.environment()?;
     let mut builder = Session::builder(&env)
       .map_err(|error| format!("Cannot create session builder: {error}"))?;
-    match provider {
-      "cpu" => {}
-      other => {
-        // GPU providers need the matching ort crate features at build
-        // time (Phase D per-platform builds); without them the attempt
-        // fails here and the ladder falls through, as designed.
-        let _ = &mut builder;
-        return Err(format!(
-          "execution provider '{other}' is not compiled into this build"
-        ));
-      }
+    if provider != "cpu" {
+      let dispatch = execution_provider(provider)?;
+      builder = builder
+        .with_execution_providers([dispatch])
+        .map_err(|error| format!("Cannot register provider '{provider}': {error}"))?;
     }
     builder
       .commit_from_file(model_path)
@@ -1571,6 +1630,22 @@ mod tests {
         );
       }
     }
+
+    // The auto ladder must walk the compiled GPU provider first: on
+    // this machine (no CUDA provider library beside the dylib) the
+    // CUDA attempt is recorded as failed and CPU wins; where the
+    // provider library exists, CUDA may win instead.
+    let mut auto_factory = OrtSessionFactory::new("auto");
+    let _ga = GenderAge::create(&models.join("genderage.onnx"), &mut auto_factory)
+      .expect("genderage via the auto ladder");
+    let info = auto_factory.provider_info();
+    let attempts = info["attempts"].as_array().expect("attempts recorded");
+    assert_eq!(attempts[0]["provider"], "cuda");
+    let effective = info["effective"].as_str().expect("a provider resolved");
+    assert!(
+      effective == "cpu" || effective == "cuda",
+      "effective: {effective}"
+    );
   }
 
   /// End-to-end scan of a synthetic video (a looped golden still)
