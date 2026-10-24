@@ -1,7 +1,14 @@
 import * as fs from 'fs';
 import * as path from 'path';
 
-import type { ClusterizeResult } from './cluster';
+import {
+  clusterizeIndex,
+  mergePersonsInIndex,
+  moveGroupsInIndex,
+  setPersonRepresentativeInIndex,
+  splitPersonInIndex,
+  type ClusterizeResult,
+} from './cluster';
 import {
   computeFaceStats,
   emptyFaceIndex,
@@ -204,7 +211,106 @@ export class FaceStore {
     this.index.persons = result.persons;
     this.index.clusterThreshold = threshold;
     this.index.nextPersonSeq = result.nextPersonSeq;
+    // Write back the pruned manual-edit pins (empty maps remove the
+    // fields entirely so untouched indexes keep their Phase 2 shape).
+    if (Object.keys(result.manualGroups).length > 0) {
+      this.index.manualGroups = result.manualGroups;
+    } else {
+      delete this.index.manualGroups;
+    }
+    if (result.manualUnassigned.length > 0) {
+      this.index.manualUnassigned = result.manualUnassigned;
+    } else {
+      delete this.index.manualUnassigned;
+    }
+    if (Object.keys(result.manualRepFaces).length > 0) {
+      this.index.manualRepFaces = result.manualRepFaces;
+    } else {
+      delete this.index.manualRepFaces;
+    }
     this.saveIndex();
+  }
+
+  /** Re-run clustering over the current index at its stored threshold. */
+  private reclusterNow(): void {
+    const result = clusterizeIndex(this.index, (idx) => this.readEmbedding(idx), this.index.clusterThreshold);
+    this.applyClustering(result, this.index.clusterThreshold);
+  }
+
+  private assertWritable(): void {
+    if (this.modelMismatch) {
+      throw new Error('face index was built with a different model pack; reset required before writing');
+    }
+  }
+
+  /**
+   * Merge 2+ persons into one (Phase 3). Returns the survivor's ID
+   * (see mergePersonsInIndex for the survivor rule) or null when the
+   * merge did not apply. The edit is materialized immediately via a
+   * pin-aware re-clustering, so face assignments, personsByVideo and
+   * the persons array are consistent when this returns.
+   */
+  mergePersons(personIds: string[]): string | null {
+    this.assertWritable();
+    const survivor = mergePersonsInIndex(this.index, personIds);
+    if (!survivor) {
+      return null;
+    }
+    this.reclusterNow();
+    return survivor;
+  }
+
+  /**
+   * Split the listed groups of a person off into a new person
+   * (Phase 3). Returns the new person's ID (fresh from the index
+   * sequence; removed persons' IDs are never reused), or null when
+   * the split did not apply (unknown person, empty selection, or the
+   * selection covers every group of the person).
+   */
+  splitPerson(personId: string, groupKeys: string[]): string | null {
+    this.assertWritable();
+    let seq = this.index.nextPersonSeq || 1;
+    (this.index.persons || []).forEach((p) => {
+      const n = parseInt(p.personId.substring(1), 10);
+      if (!isNaN(n)) {
+        seq = Math.max(seq, n + 1);
+      }
+    });
+    const newPersonId = 'p' + String(seq).padStart(6, '0');
+    if (!splitPersonInIndex(this.index, personId, groupKeys, newPersonId)) {
+      return null;
+    }
+    this.index.nextPersonSeq = seq + 1;
+    this.reclusterNow();
+    return newPersonId;
+  }
+
+  /**
+   * Move groups to another person, or back to unassigned when
+   * `targetPersonId` is null (Phase 3). Returns false when nothing
+   * was moved (unknown groups, or an unknown target person).
+   */
+  moveGroups(groupKeys: string[], targetPersonId: string | null): boolean {
+    this.assertWritable();
+    if (!moveGroupsInIndex(this.index, groupKeys, targetPersonId)) {
+      return false;
+    }
+    this.reclusterNow();
+    return true;
+  }
+
+  /**
+   * Set a person's representative face (Phase 3). Applied to the
+   * record in place; the stored override makes every later
+   * re-clustering keep it while the face belongs to the person.
+   */
+  setPersonRepresentative(personId: string, faceId: string): boolean {
+    this.assertWritable();
+    if (!setPersonRepresentativeInIndex(this.index, personId, faceId)) {
+      return false;
+    }
+    this.saveIndex();
+    return true;
   }
 
   renamePerson(personId: string, name: string): boolean {
