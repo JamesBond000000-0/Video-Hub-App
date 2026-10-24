@@ -5,6 +5,7 @@
 - 状態: Phase 0（スパイク）完了、Phase 1（検出＋顔サムネイルの統合）完了、Phase 2（全体クラスタリング＋人物 UI＋属性集約）完了、Phase 3（手直し系）完了。**全フェーズ完了（2026-10-24）**
 - 改訂: 2026-10-23 属性推定（年齢・性別）を任意機能として追加（§5.8、ユーザー決定）
 - 改訂: 2026-10-23 Phase 1 完了を記録し、D1 / D2 / D6 を決定済みに更新（詳細は tools/face-spike/PHASE1_RESULTS.md）
+- 改訂: 2026-10-24 第 3 パック lvface（LVFace-T）を追加（決定 D8、§3.2 / §14。実測比較は tools/face-spike/LVFACE_COMPARISON.md、実装検証は tools/face-spike/LVFACE_PACK_RESULTS.md）
 - 前提: **個人用 fork で、有償配布はしない**。この前提がモデルライセンスの判断（§3.3）を左右するため、前提が変わる場合は §3 から見直すこと
 
 ---
@@ -80,6 +81,7 @@ InsightFace のパックには年齢性別・ランドマーク専用モデル�
 |---|---|---|---|---|
 | **quality**（buffalo_l 抜粋） | `det_10g.onnx`（SCRFD-10GF） | `w600k_r50.onnx`（ResNet50@WebFace600K） | 約 180MB | 検出が強い。小さい顔・横顔・密集で差が出る |
 | **light**（buffalo_sc） | `det_500m.onnx`（SCRFD-500MF） | `w600k_mbf.onnx`（MobileFaceNet@WebFace600K） | 約 16MB | パック全体でも 16MB と最小。高速だが検出の Hard 指標は 10GF に大きく劣る |
+| **lvface**（D8 で追加） | `det_10g.onnx`（SCRFD-10GF、quality と同一） | `LVFace-T_Glint360K.onnx`（ViT-T@Glint360K、ByteDance） | 約 94MB | 認識が ArcFace の約 0.34 倍の時間で、精度は本用途の実測で互角（D8）。認識モデルは HuggingFace（bytedance-research/LVFace）から取得し、配布ファイル名のまま配置する |
 
 参考値（公式の公表値）: 認識の LFW は buffalo_l 99.83 / buffalo_s 系 99.70 と差が小さい。一方、検出の WIDER FACE Hard は SCRFD-10GF 約 83 に対し SCRFD-500MF は約 68〜69 で、動画フレームで問題になるのは主にこちら。
 
@@ -89,6 +91,7 @@ InsightFace のパックには年齢性別・ランドマーク専用モデル�
 ### 3.3 ライセンス
 
 - InsightFace のコードは MIT。ただし**学習済みモデルは非商用・研究目的のみ**で、商用利用には別途ライセンスが必要（InsightFace 公式の明記）
+- LVFace（D8 の lvface パック）も同条件: コードは MIT だが**学習済みモデルの重みは非商用・研究目的のみ**（ByteDance）。個人用・無償の前提は変わらない
 - 本 fork は個人用・無償という前提（冒頭）でのみモデルを利用する。前提が変わる場合はモデルを YuNet + SFace（Apache 2.0 / MIT 系、商用可）に差し替える。エンジン側の入出力契約（§5）はモデル非依存に保ち、差し替え可能にしておく
 - モデルファイルはリポジトリにコミットしない。取得元 URL と SHA256 を付録 A に記録し、取得スクリプトで配置する（未決事項 D2）
 
@@ -169,10 +172,11 @@ Electron main (node/)
 - 品質スコア = `det_score × sqrt(顔の面積比)` で代表顔を選ぶ（v1 は単純に。ブレ判定＝ラプラシアン分散は Phase 2 以降の改善候補として記録のみ）
 - ファイル名は `<faceId>.jpg`。faceId は `<動画hash>-<連番>` とし、配置は §6.1
 
-### 5.4 認識（ArcFace）
+### 5.4 認識（ArcFace / LVFace）
 
 - 入力: aligned 112×112 を NCHW 化し `(px - 127.5) / 127.5`
 - 出力: 512 次元を L2 正規化して埋め込みとする。以後の類似度は内積のみ
+- 認識の実装はパックごとに切り替える（`RecognizerKind`: quality / light は ArcFace、lvface は LVFace。D8）。LVFace の前処理は公式推論コードと等価であることをスパイクで確認済み（位置合わせテンプレートも同一のため aligned crop をそのまま使える）。入出力契約が同一でも埋め込み空間はモデルごとに異なるため、modelId で混在を防ぐ（§6.4）
 
 ### 5.5 動画内の統合
 
@@ -298,7 +302,7 @@ hub 単位の設定として `FinalObject` に `screenshotSettings` と並べて
 | 項目 | 型 | 既定値 | 説明 |
 |---|---|---|---|
 | `enabled` | boolean | `false` | 顔スキャンの有効化（明示オプトイン） |
-| `modelPack` | `'quality' \| 'light'` | D1 で決定 | §3.2 の 2 構成 |
+| `modelPack` | `'quality' \| 'light' \| 'lvface'` | D1 で決定 | §3.2 の 3 構成（lvface は D8 で追加） |
 | `framesPerVideo` 上限 | number | 60 | §5.1 の本数計算の上限 |
 | `sampleIntervalSec` | number | 30 | §5.1 の間隔 |
 | `minFaceSizePx` | number | 40 | §5.2 の最小顔サイズ |
@@ -351,6 +355,7 @@ hub 単位の設定として `FinalObject` に `screenshotSettings` と並べて
 | `node/face/face-worker.ts` | utility process の入口。モデルロードとジョブ実行 |
 | `node/face/scrfd.ts` | SCRFD の前処理・推論・後処理（§3.4-1） |
 | `node/face/arcface.ts` | 位置合わせ（§3.4-2）と埋め込み取得 |
+| `node/face/lvface.ts` | （D8 で追加）LVFace 認識の推論。入出力契約は arcface と同一 |
 | `node/face/image-ops.ts` | sharp ラッパ: デコード、リサイズ、ワープ、切り抜き、保存 |
 | `node/face/cluster.ts` | 動画内統合 + 全体クラスタリング（純関数） |
 | `node/face/genderage.ts` | （任意機能用）年齢・性別推論と人物単位の集約（§5.8） |
@@ -478,6 +483,7 @@ hub 単位の設定として `FinalObject` に `screenshotSettings` と並べて
 | D5 | クラスタリング閾値 `T_in` / `T_global` の最終値 | **決定済み（2026-10-23）: `T_in` = 0.50、`T_global` = 0.50**。スイープ実測で 0.45 では混入 1 件が残り、0.50 から混入ゼロ（付録 C、`tools/face-spike/CLUSTER_RESULTS.md`） | 決定済み |
 | D6 | linux の asar 扱い（§9.3） | Phase 1 で実機確認し、必要なら単独コミットで変更 | **決定済み**（Phase 1 で確認: electron-builder 26 では linux も asar 既定 true。linux にも asar + asarUnpack を明示した。詳細は PHASE1_RESULTS.md） |
 | D7 | 属性推定（年齢・性別）を入れるか | **決定済み（2026-10-23）: 任意機能として追加**。既定オフ、人物単位の集約値のみ保存・表示（§5.8） | 決定済み |
+| D8 | 第 3 パックとして LVFace-T を追加するか | **決定済み（2026-10-24、ユーザー決定）: 追加する**。構成は検出 `det_10g.onnx`（quality と同一）+ 認識 LVFace-T、パック id は `lvface`、modelId は `lvface-t-glint360k`。根拠は LVFace 実測比較（`tools/face-spike/LVFACE_COMPARISON.md`）: 認識 64.7ms/face（ArcFace の 0.34 倍）、モデル 76.7MB、T_global = 0.50 で混入 0・動画間統合 3 組成立のため**閾値の既定は 0.50 のまま流用**（パック別の既定値は持たない）。属性推定（genderage）は入力がフレーム crop で認識埋め込みに依存しないため、lvface でも quality フォルダの `genderage.onnx` を共用してそのまま動作する | 決定済み |
 
 ---
 
@@ -495,6 +501,12 @@ hub 単位の設定として `FinalObject` に `screenshotSettings` と並べて
 | `genderage.onnx`（任意機能用） | buffalo_l.zip のみ | 1,322,532 | `4fde69b1c810857b88c64a335084f1c3fe8f01246c9a191b48c7bb756d6652fb` |
 
 注意: `genderage.onnx` は buffalo_sc.zip には**含まれていない**（buffalo_sc は det + rec の2ファイルのみ）。light 構成で属性推定も使う場合は buffalo_l（または buffalo_s）側の genderage を併用する。スパイクでは buffalo_l のものを両構成で使う。
+
+lvface パック（D8）の認識モデル。取得元は HuggingFace `bytedance-research/LVFace`（revision `b12702ab1f5c721748e054a66dc90e1edd1f0724`、2026-10-24 取得）。検出は quality と同じ `det_10g.onnx` を使う（配置時は quality フォルダからのコピーでよい）。
+
+| ファイル | 取得元 | サイズ (bytes) | SHA256 |
+|---|---|---|---|
+| `LVFace-T_Glint360K.onnx` | HuggingFace bytedance-research/LVFace | 76,653,813 | `bf8da0e1e93c432d9a1d874a9ba0990f5859f970e8864b3990f2f33d11f9cdb3` |
 
 ## 付録 B. ArcFace 位置合わせテンプレート（112×112、5 点）
 

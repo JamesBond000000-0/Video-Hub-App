@@ -6,7 +6,7 @@
 
 ## このフォークで追加した機能（ブランチ `feature/face-recognition`）
 
-- **顔検出と顔サムネイル**: 動画から顔のある場面を自動で抽出し、顔サムネイルを生成します。検出は SCRFD、認識は ArcFace（InsightFace のモデル）で、推論はすべてローカル・CPU で動きます
+- **顔検出と顔サムネイル**: 動画から顔のある場面を自動で抽出し、顔サムネイルを生成します。検出は SCRFD、認識はモデルパックで ArcFace（InsightFace）または LVFace-T（ByteDance）を選択でき、推論はすべてローカル・CPU で動きます
 - **人物ごとの自動分類**: 顔の特徴量をもとに人物ごとに自動でグループ化。サイドバーの人物欄や人物フィルタで「あの人が出ている動画」だけを表示できます
 - **名前付けと手直し**: 人物への名前付け、間違った分類の結合・分割・付け替え、代表顔の変更に対応。手直しの内容は再分類しても保持されます
 - **年齢・性別の推定（任意機能、既定はオフ）**: 人物単位の集約値（年齢は中央値、性別は多数決）だけを保存・表示します。年齢は ±10 歳級の目安です
@@ -19,10 +19,11 @@
 2. モデルファイルを、設定画面に表示される配置先（`<userData>/face-models/quality/`）に置く
    - quality（既定）: `det_10g.onnx` と `w600k_r50.onnx`（InsightFace の buffalo_l パックから取得、計 約190MB）
    - light: `det_500m.onnx` と `w600k_mbf.onnx`（buffalo_sc パック、計 約16MB）
-   - モデルはアプリに同梱されません。buffalo モデルのライセンスは**非商用の研究目的のみ**ですのでご注意ください
+   - lvface（高速）: `det_10g.onnx`（quality と同じファイル。quality フォルダからコピーで可）と `LVFace-T_Glint360K.onnx`（HuggingFace の [bytedance-research/LVFace](https://huggingface.co/bytedance-research/LVFace) から取得、計 約94MB）。配置先は `<userData>/face-models/lvface/`。認識が ArcFace の約 3 分の 1 の時間で済みます（実測比較は `tools/face-spike/LVFACE_COMPARISON.md`）。パックを切り替えると埋め込みを作り直すため再スキャンが必要です
+   - モデルはアプリに同梱されません。buffalo / LVFace いずれのモデルもライセンスは**非商用の研究目的のみ**ですのでご注意ください
 3. ハブを開くと、通常のサムネイル抽出に続いて顔スキャンが走り、人物欄に結果が表示されます
 
-設計と検証の記録: [設計書](docs/FACE_RECOGNITION_DESIGN.md) / 検証結果は `tools/face-spike/` の `RESULTS.md`、`CLUSTER_RESULTS.md`、`PHASE1_RESULTS.md`〜`PHASE3_RESULTS.md`
+設計と検証の記録: [設計書](docs/FACE_RECOGNITION_DESIGN.md) / 検証結果は `tools/face-spike/` の `RESULTS.md`、`CLUSTER_RESULTS.md`、`PHASE1_RESULTS.md`〜`PHASE3_RESULTS.md`、`LVFACE_COMPARISON.md`、`LVFACE_PACK_RESULTS.md`
 
 ## ライセンス上の注意点とクレジット
 
@@ -30,6 +31,8 @@
 
 - **顔認識モデル（InsightFace / buffalo パック）**: 顔検出（SCRFD）、顔認識（ArcFace）、年齢・性別推定（genderage）のモデルは [InsightFace](https://github.com/deepinsight/insightface)（DeepInsight）が公開している buffalo_l / buffalo_sc パックのものです。InsightFace のコードは MIT ライセンスですが、**公開されている学習済みモデルの重みは「非商用の研究目的のみ」**とされており、商用利用はできません。このフォークは個人による非商用利用を前提としています。モデルファイルはこのリポジトリにもアプリの配布物にも含まれておらず、利用する各自が InsightFace の配布元から取得してください
   - 論文: ArcFace — Deng et al., "ArcFace: Additive Angular Margin Loss for Deep Face Recognition", CVPR 2019 / SCRFD — Guo et al., "Sample and Computation Redistribution for Efficient Face Detection", 2021
+- **顔認識モデル（LVFace、lvface パック使用時）**: 認識モデル LVFace-T は [LVFace](https://github.com/bytedance/LVFace)（ByteDance）の公開重みで、HuggingFace（[bytedance-research/LVFace](https://huggingface.co/bytedance-research/LVFace)）から各自で取得してください。LVFace のコードは MIT ライセンスですが、**学習済みモデルの重みは非商用の研究目的のみ**とされており、buffalo パックと同条件です。モデルファイルはこのリポジトリにもアプリの配布物にも含まれていません。検出には quality と同じ `det_10g.onnx`（SCRFD）を使います
+  - 論文: LVFace — You et al., ICCV 2025（詳細は公式リポジトリ参照）
 - **追加した依存ライブラリ**: [onnxruntime-node](https://github.com/microsoft/onnxruntime)（MIT License、Microsoft）/ [sharp](https://github.com/lovell/sharp)（Apache License 2.0。画像処理に使う libvips は LGPL 3.0 以降のライセンスです）
 - **本家**: Video Hub App 3 は Boris Yakubchik（[whyboris](https://github.com/whyboris)）作で、MIT ライセンスです（詳細は下記の本家 README の License 節と `LICENSE` ファイルを参照）。このフォークは本家とは無関係の非公式なものです
 - **データの取り扱いについて**: 顔の特徴量（埋め込みベクトル）は生体情報にあたるデータです。処理はすべて自分の PC 内で完結し、外部に送信されることはありませんが、各ハブの `faces/` フォルダ（特徴量と顔サムネイルを保存）には個人を識別しうる情報が含まれるため、取り扱いと共有には十分注意してください
