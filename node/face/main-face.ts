@@ -441,4 +441,57 @@ export function registerFaceIpc(ipc: Electron.IpcMain): void {
       event.sender.send('face-index-returning', getFaceIndexPayload());
     }
   });
+
+  // Manual corrections (Phase 3). Composition-changing edits invalidate
+  // the affected persons' attribute aggregates inside the re-clustering
+  // the store runs; when attributes are enabled, fresh aggregates are
+  // computed right away (persons whose video paths are unknown this
+  // session are picked up by the next full attribute pass instead).
+  ipc.on('face-merge-persons', async (event, personIds: string[]) => {
+    try {
+      const survivor = getFaceStore().mergePersons(Array.isArray(personIds) ? personIds : []);
+      if (survivor) {
+        await computeFaceAttributes();
+      }
+    } catch (err) {
+      console.log('face merge failed:', err);
+    }
+    event.sender.send('face-index-returning', getFaceIndexPayload());
+  });
+
+  ipc.on('face-split-person', async (event, personId: string, groupKeys: string[]) => {
+    try {
+      const newPersonId = getFaceStore().splitPerson(personId, Array.isArray(groupKeys) ? groupKeys : []);
+      if (newPersonId) {
+        await computeFaceAttributes();
+      }
+    } catch (err) {
+      console.log('face split failed:', err);
+    }
+    event.sender.send('face-index-returning', getFaceIndexPayload());
+  });
+
+  ipc.on('face-move-groups', async (event, groupKeys: string[], targetPersonId: string | null) => {
+    try {
+      const moved = getFaceStore().moveGroups(
+        Array.isArray(groupKeys) ? groupKeys : [],
+        typeof targetPersonId === 'string' ? targetPersonId : null,
+      );
+      if (moved) {
+        await computeFaceAttributes();
+      }
+    } catch (err) {
+      console.log('face group move failed:', err);
+    }
+    event.sender.send('face-index-returning', getFaceIndexPayload());
+  });
+
+  ipc.on('face-set-person-representative', (event, personId: string, faceId: string) => {
+    try {
+      getFaceStore().setPersonRepresentative(personId, faceId);
+    } catch (err) {
+      console.log('face representative change failed:', err);
+    }
+    event.sender.send('face-index-returning', getFaceIndexPayload());
+  });
 }
