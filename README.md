@@ -75,6 +75,17 @@
 
 設計と検証の記録: [設計書](docs/FACE_RECOGNITION_DESIGN.md) / 検証結果は `tools/face-spike/` の `RESULTS.md`、`CLUSTER_RESULTS.md`、`PHASE1_RESULTS.md`〜`PHASE3_RESULTS.md`、`LVFACE_COMPARISON.md`、`LVFACE_PACK_RESULTS.md`、`GPU_PROVIDER_RESULTS.md`
 
+### Tauri 版の注意点
+
+Tauri 版（ブランチ `integration/tauri-face-recognition`、試験中）では顔認識を Rust で実装し直しており、データ形式は Electron 版と互換です（Electron 版で作ったハブをそのまま開けます）。ランタイムが違うため、次の点が Electron 版と異なります。
+
+- **ONNX Runtime は 1.31.0 を同梱**します（Electron 版は 1.30.0 系）。顔モデル自体の配置場所と使い方は Electron 版と同じです
+- **macOS / Intel 機では顔認識が使えません**: ONNX Runtime 1.31.0 の macOS パッケージは arm64 版のみのため、Intel Mac ではライブラリを読み込めず顔認識だけが無効になります（アプリ本体はユニバーサルバイナリで通常どおり動作します）
+- **GPU プロバイダのライブラリは同梱されません**: CUDA / DirectML のプロバイダライブラリは Electron 版と同じく各自での配置が必要です。ONNX Runtime **1.31.0 用**のプロバイダライブラリ（CUDA なら `onnxruntime_providers_cuda.*`）を同梱ライブラリと同じフォルダに置くか、環境変数 `ORT_DYLIB_PATH` で完全な ONNX Runtime ビルドを指定してください。無い場合は理由が設定画面に表示されたうえで CPU に自動で切り替わります。CUDA Toolkit / cuDNN が別途必要な点は上記の GPU の節と同じです
+- **ソースからビルドする場合は ONNX Runtime の取得が先に必要です**: Tauri 版をビルドする前に `bash src-tauri/fetch-ort.sh` を実行してください（バイナリは git 管理外のため、未取得だとリソース不足でビルドが失敗します。リリース用 CI でも同じ手順を実行しています）
+
+移植の設計と検証の記録: [設計書](docs/TAURI_FACE_PORT_DESIGN.md)
+
 ## ライセンス上の注意点とクレジット
 
 このフォークのコード自体は本家と同じ MIT ライセンスですが、顔認識のために使う**学習済みモデルには別の条件**が付きます。
@@ -155,6 +166,12 @@ Install the JavaScript dependencies first (all platforms):
 
 ```bash
 npm install --legacy-peer-deps
+```
+
+For the Tauri runtime, also fetch the bundled ONNX Runtime library for the face-recognition engine before building (the binaries are git-ignored; the build fails without them). The release workflow runs the same step:
+
+```bash
+bash src-tauri/fetch-ort.sh
 ```
 
 #### Electron (supported runtime)
