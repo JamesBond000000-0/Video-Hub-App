@@ -122,4 +122,19 @@
   .face-stats {
     margin: 12px 0;
   }
+
+  .face-download {
+    margin: 10px 0;
+  }
+
+  .face-download-progress-row {
+    align-items: center;
+    display: flex;
+    gap: 10px;
+
+    progress {
+      flex: 1;
+      height: 14px;
+    }
+  }
 }

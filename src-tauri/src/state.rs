@@ -23,6 +23,8 @@ pub struct VhaState {
   settings_file: PathBuf,
   face_settings: Mutex<Value>,
   photo_settings: Mutex<Value>,
+  model_download_cancel: Arc<AtomicBool>,
+  model_download_running: Arc<AtomicBool>,
   face_provider_info: Mutex<Option<Value>>,
   current_hub: Mutex<Option<CurrentHub>>,
   system_messages: Mutex<Value>,
@@ -55,6 +57,8 @@ impl VhaState {
       settings_file: settings_directory.join("settings.json"),
       face_settings: Mutex::new(crate::face::default_face_settings()),
       photo_settings: Mutex::new(crate::photo::default_photo_settings()),
+      model_download_cancel: Arc::new(AtomicBool::new(false)),
+      model_download_running: Arc::new(AtomicBool::new(false)),
       face_provider_info: Mutex::new(None),
       current_hub: Mutex::new(None),
       system_messages: Mutex::new(system_messages),
@@ -159,6 +163,28 @@ impl VhaState {
       }
     }
     Ok(current.clone())
+  }
+
+  /// Start bookkeeping for a model download. Returns the cancel flag
+  /// to hand to the download, or None when one is already running.
+  pub fn begin_model_download(&self) -> Option<Arc<AtomicBool>> {
+    if self
+      .model_download_running
+      .compare_exchange(false, true, Ordering::AcqRel, Ordering::Relaxed)
+      .is_err()
+    {
+      return None;
+    }
+    self.model_download_cancel.store(false, Ordering::Relaxed);
+    Some(self.model_download_cancel.clone())
+  }
+
+  pub fn cancel_model_download(&self) {
+    self.model_download_cancel.store(true, Ordering::Relaxed);
+  }
+
+  pub fn finish_model_download(&self) {
+    self.model_download_running.store(false, Ordering::Relaxed);
   }
 
   pub fn set_current_hub(&self, hub: CurrentHub) -> Result<(), String> {

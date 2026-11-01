@@ -11,6 +11,7 @@ import type { OnInit } from '@angular/core';
 import type { SettingsButtonsType } from '../../common/settings-buttons';
 import type { FaceSettings, PhotoSettings } from '../../../../interfaces/final-object.interface';
 import type { FaceModelStatus, FaceStats } from '../../../../node/face/face-types';
+import type { FaceDownloadProgress } from '../../services/face.service';
 
 @Component({
   standalone: false,
@@ -37,6 +38,8 @@ export class SettingsComponent implements OnInit, OnChanges {
   readonly toggleButton = output<string>();
   readonly toggleHideButton = output<string>();
   readonly faceSettingsChanged = output<void>();
+  readonly faceDownloadRequested = output<void>();
+  readonly faceDownloadCancelRequested = output<void>();
   readonly photoSettingsChanged = output<void>();
   readonly faceScanRequested = output<void>();
   readonly faceReclusterRequested = output<void>();
@@ -47,6 +50,8 @@ export class SettingsComponent implements OnInit, OnChanges {
   readonly faceModelStatus = input<FaceModelStatus>();
   readonly faceSettings = input<FaceSettings>();
   readonly faceStats = input<FaceStats>();
+  readonly faceDownloadProgress = input<FaceDownloadProgress>();
+  readonly faceDownloadAvailable = input<boolean>(false);
   readonly photoSettings = input<PhotoSettings>();
   readonly latestVersionAvailable = input();
   readonly settingTabToShow = input();
@@ -81,6 +86,46 @@ export class SettingsComponent implements OnInit, OnChanges {
       settings.enabled = (event.target as HTMLInputElement).checked;
       this.faceSettingsChanged.emit();
     }
+  }
+
+  /** Approximate download size shown on the download button */
+  downloadSizeLabel(): string {
+    const pack = this.faceSettings()?.modelPack;
+    if (pack === 'quality') {
+      return '~289 MB';
+    }
+    if (pack === 'light') {
+      return '~15 MB';
+    }
+    if (pack === 'lvface') {
+      return '~77 MB + detector';
+    }
+    return '';
+  }
+
+  downloadInProgress(): boolean {
+    const progress = this.faceDownloadProgress();
+    return !!progress && (progress.stage === 'downloading' || progress.stage === 'extracting');
+  }
+
+  downloadPercent(): number {
+    const progress = this.faceDownloadProgress();
+    if (!progress || !progress.total) {
+      return 0;
+    }
+    return Math.min(100, Math.floor((progress.received / progress.total) * 100));
+  }
+
+  downloadProgressText(): string {
+    const progress = this.faceDownloadProgress();
+    if (!progress) {
+      return '';
+    }
+    const receivedMb = (progress.received / 1048576).toFixed(1);
+    if (progress.total) {
+      return `${receivedMb} / ${(progress.total / 1048576).toFixed(1)} MB`;
+    }
+    return `${receivedMb} MB`;
   }
 
   togglePhotoEnabled(event: Event) {

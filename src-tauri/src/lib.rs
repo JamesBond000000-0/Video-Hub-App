@@ -4,6 +4,7 @@ mod face_infer;
 mod hub;
 mod ipc;
 mod media;
+mod model_download;
 mod photo;
 mod settings;
 mod state;

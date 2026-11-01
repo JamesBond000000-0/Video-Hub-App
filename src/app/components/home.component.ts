@@ -13,6 +13,8 @@ import { VirtualScrollerComponent } from '@iharbeck/ngx-virtual-scroller';
 import { AutoTagsSaveService } from './tags-auto/tags-save.service';
 import { FilePathService } from './views/file-path.service';
 import { FaceService, DEFAULT_FACE_SETTINGS } from '../services/face.service';
+import { isTauri } from '@tauri-apps/api/core';
+
 import { PhotoService, DEFAULT_PHOTO_SETTINGS } from '../services/photo.service';
 import { ImageElementService } from '../services/image-element.service';
 import { ManualTagsService } from './tags-manual/manual-tags.service';
@@ -291,6 +293,9 @@ export class HomeComponent implements OnInit, AfterViewInit {
   currentFaceSettings: FaceSettings = { ...DEFAULT_FACE_SETTINGS };
 
   currentPhotoSettings: PhotoSettings = { ...DEFAULT_PHOTO_SETTINGS };
+
+  /** One-click model download is implemented by the Tauri backend */
+  isTauriApp = isTauri();
 
   photoViewerItem: ImageElement | null = null;  // built-in photo viewer (PHOTO_SUPPORT_DESIGN Phase 3)
 
@@ -1181,6 +1186,11 @@ export class HomeComponent implements OnInit, AfterViewInit {
    * A changed clustering threshold or attributes toggle re-runs the
    * classification (the recluster trigger points of §5.6 / §5.8).
    */
+  /** One-click download of the selected pack's model files */
+  public onFaceDownloadRequested(): void {
+    this.faceService.requestModelDownload(this.currentFaceSettings.modelPack);
+  }
+
   public onFaceSettingsChanged(): void {
     this.imageElementService.finalArrayNeedsSaving = true;
     this.faceService.sendSettings(this.currentFaceSettings);

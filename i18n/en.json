@@ -366,7 +366,10 @@
     "versionError": "cannot check for new version at this time",
     "wordCloud": "Bottom tray",
     "youHaveLatest": "you have the latest version",
-    "zoom": "Zoom"
+    "zoom": "Zoom",
+    "faceDownload": "Download models",
+    "faceDownloadCancel": "Cancel",
+    "faceDownloadNote": "One-click download: fetches the model files for the selected pack from the official sources (GitHub / Hugging Face) and places them in the folder above. The models are licensed for non-commercial research use only."
   },
   "SHORTCUTS": {
     "andClickAnyFile": "and click any file to see the file details",

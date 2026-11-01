@@ -292,6 +292,27 @@
           }
         </ul>
         <div class="face-model-note">{{ 'SETTINGS.faceModelsNote' | translate }}</div>
+        @if (!status.ready && faceDownloadAvailable()) {
+          <div class="face-download">
+            @if (downloadInProgress()) {
+              <div class="face-download-progress-row">
+                <progress [value]="downloadPercent()" max="100"></progress>
+                <span class="monospace">{{ downloadProgressText() }}</span>
+                <button class="defaultSettingsButton" (click)="faceDownloadCancelRequested.emit()">
+                  {{ 'SETTINGS.faceDownloadCancel' | translate }}
+                </button>
+              </div>
+            } @else {
+              <button class="defaultSettingsButton" (click)="faceDownloadRequested.emit()">
+                {{ 'SETTINGS.faceDownload' | translate }} ({{ downloadSizeLabel() }})
+              </button>
+              @if (faceDownloadProgress()?.stage === 'error') {
+                <div class="face-model-note">✗ {{ faceDownloadProgress().message }}</div>
+              }
+            }
+            <div class="face-model-note">{{ 'SETTINGS.faceDownloadNote' | translate }}</div>
+          </div>
+        }
         @if (status.providerInfo; as providerInfo) {
           <div class="face-provider-status">
             @if (providerInfo.effective) {

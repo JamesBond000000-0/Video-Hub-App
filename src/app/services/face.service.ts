@@ -43,10 +43,20 @@ export interface PersonGroupInfo {
  * holds the model placement status and the face index received from the
  * main process, and sends face requests back over IPC.
  */
+/** Progress of a one-click model download (Tauri backend emits these). */
+export interface FaceDownloadProgress {
+  pack: string;
+  stage: 'downloading' | 'extracting' | 'done' | 'error' | 'cancelled';
+  received: number;   // bytes received of the current file
+  total: number;      // bytes total of the current file (0 when unknown)
+  message: string;    // error detail when stage is 'error'
+}
+
 @Injectable({ providedIn: 'root' })
 export class FaceService {
 
   modelStatus: FaceModelStatus = null;
+  downloadProgress: FaceDownloadProgress = null;
   faceIndex: FaceIndexFile = null;
   modelMismatch = false;
   stats: FaceStats = { scannedVideos: 0, videosWithFaces: 0, totalFaces: 0, totalGroups: 0, totalPersons: 0 };
@@ -90,6 +100,20 @@ export class FaceService {
 
     (window as any).myElectron.receiveFromMain('face-model-status-returning', (status: FaceModelStatus) => {
       this.modelStatus = status;
+    });
+
+    (window as any).myElectron.receiveFromMain('face-download-progress', (progress: FaceDownloadProgress) => {
+      this.downloadProgress = progress;
+      if (progress && (progress.stage === 'done' || progress.stage === 'error' || progress.stage === 'cancelled')) {
+        // Terminal stages stay visible until the next status refresh;
+        // clear the in-progress state a little later so the user can
+        // see the outcome.
+        setTimeout(() => {
+          if (this.downloadProgress === progress) {
+            this.downloadProgress = null;
+          }
+        }, 6000);
+      }
     });
 
     (window as any).myElectron.receiveFromMain('face-index-returning', (payload: FaceIndexPayload) => {
@@ -230,6 +254,16 @@ export class FaceService {
 
   sendSettings(settings: FaceSettings): void {
     (window as any).myElectron.sendToMain('face-settings-updated', settings);
+  }
+
+  /** One-click download of the given pack's model files (Tauri only) */
+  requestModelDownload(pack: string): void {
+    this.downloadProgress = { pack, stage: 'downloading', received: 0, total: 0, message: '' };
+    (window as any).myElectron.sendToMain('face-download-models', pack);
+  }
+
+  cancelModelDownload(): void {
+    (window as any).myElectron.sendToMain('face-download-cancel');
   }
 
   /**

@@ -552,6 +552,11 @@
     "videoDirectory": "動画フォルダ",
     "videos": "動画"
   },
+  "SETTINGS": {
+    "faceDownload": "モデルをダウンロード",
+    "faceDownloadCancel": "キャンセル",
+    "faceDownloadNote": "ワンクリックダウンロード: 選択中のパックのモデルファイルを公式配布元 (GitHub / Hugging Face) から取得し、上のフォルダに配置します。モデルは非商用・研究目的のみのライセンスです。"
+  },
   "PHOTO": {
     "close": "閉じる",
     "openExternal": "既定のアプリで開く"

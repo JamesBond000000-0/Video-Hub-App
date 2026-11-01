@@ -486,6 +486,59 @@ fn photo_settings_updated(_window: &Window, state: &VhaState, args: &[Value]) ->
   Ok(())
 }
 
+fn face_download_models(window: &Window, state: &VhaState, args: &[Value]) -> Result<(), String> {
+  let pack = string_arg(args, 0);
+  if !crate::model_download::is_downloadable_pack(&pack) {
+    return Err(format!("Unknown model pack: {pack}"));
+  }
+  let Some(cancel) = state.begin_model_download() else {
+    return Ok(()); // a download is already running; its progress is showing
+  };
+  let app = window.app_handle().clone();
+  std::thread::spawn(move || {
+    let result = crate::model_download::run_download(
+      &app,
+      &pack,
+      &crate::face::face_models_root(),
+      &cancel,
+    );
+    let state = app.state::<VhaState>();
+    state.finish_model_download();
+    if let Err(error) = result {
+      let stage = if error == "cancelled" { "cancelled" } else { "error" };
+      let _ = app.emit(
+        "face-download-progress",
+        Value::Array(vec![json!({
+          "pack": pack,
+          "stage": stage,
+          "received": 0,
+          "total": 0,
+          "message": if stage == "error" { error } else { String::new() },
+        })]),
+      );
+    }
+    // Refresh the model status either way so the settings view
+    // reflects whatever is on disk now.
+    if let Ok(settings) = state.face_settings() {
+      let resolution = state.face_provider_info().ok().flatten();
+      let _ = app.emit(
+        "face-model-status-returning",
+        Value::Array(vec![face::model_status_with(
+          &settings,
+          &crate::face::face_models_root(),
+          resolution.as_ref(),
+        )]),
+      );
+    }
+  });
+  Ok(())
+}
+
+fn face_download_cancel(state: &VhaState) -> Result<(), String> {
+  state.cancel_model_download();
+  Ok(())
+}
+
 fn string_arg(args: &[Value], index: usize) -> String {
   args
     .get(index)
@@ -731,6 +784,8 @@ pub fn ipc_send(
     "face-get-model-status" => face_model_status(&window, &state),
     "face-get-index" => face_get_index(&window, &state),
     "face-settings-updated" => face_settings_updated(&window, &state, &args),
+    "face-download-models" => face_download_models(&window, &state, &args),
+    "face-download-cancel" => face_download_cancel(&state),
     "photo-settings-updated" => photo_settings_updated(&window, &state, &args),
     "face-recluster" => face_recluster(&window, &state, &args),
     "face-scan-request" => face_scan_request(&window, &state, &args),
