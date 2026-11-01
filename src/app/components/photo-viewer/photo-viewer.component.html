@@ -1,0 +1,31 @@
+@if (item(); as photo) {
+  <div class="photo-viewer-backdrop" (click)="onBackdropClick()">
+    <div class="photo-viewer-toolbar" (click)="$event.stopPropagation()">
+      <span class="photo-viewer-name">{{ photo.fileName }}</span>
+      <span class="photo-viewer-meta">{{ photo.width }} × {{ photo.height }}</span>
+      @if (positionText()) {
+        <span class="photo-viewer-meta">{{ positionText() }}</span>
+      }
+      <button type="button" class="photo-viewer-button" (click)="onOpenExternally($event)">
+        {{ 'PHOTO.openExternal' | translate }}
+      </button>
+      <button type="button" class="photo-viewer-button" (click)="closed.emit()">
+        {{ 'PHOTO.close' | translate }}
+      </button>
+    </div>
+
+    <button type="button" class="photo-viewer-nav photo-viewer-nav-prev" (click)="onNavigate(-1, $event)">&#8249;</button>
+
+    <div class="photo-viewer-stage" [class.zoomed]="zoomed">
+      <img
+        class="photo-viewer-image"
+        [src]="previewPath"
+        [alt]="photo.fileName"
+        (click)="toggleZoom($event)"
+        draggable="false"
+      >
+    </div>
+
+    <button type="button" class="photo-viewer-nav photo-viewer-nav-next" (click)="onNavigate(1, $event)">&#8250;</button>
+  </div>
+}

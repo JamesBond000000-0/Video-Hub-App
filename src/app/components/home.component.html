@@ -189,6 +189,20 @@
   </div>
 }
 
+<!-- ===========    PHOTO VIEWER    =========== -->
+@if (photoViewerItem) {
+  <app-photo-viewer
+    (closed)="closePhotoViewer()"
+    (navigate)="navigatePhotoViewer($event)"
+    (openExternally)="openPhotoExternally()"
+
+    [item]="photoViewerItem"
+    [folderPath]="appState.selectedOutputFolder"
+    [hubName]="appState.hubName"
+    [positionText]="photoViewerPositionText()"
+   />
+}
+
   <!-- ===========    AUTO-GENERATED TAGS MODAL    =========== -->
 @if (settingsButtons['showTags'].toggled) {
   <div
@@ -267,6 +281,7 @@
       (toggleButton)="toggleButton($any($event))"
       (toggleHideButton)="toggleHideButton($event)"
       (faceSettingsChanged)="onFaceSettingsChanged()"
+      (photoSettingsChanged)="onPhotoSettingsChanged()"
       (faceScanRequested)="onFaceScanRequested()"
       (faceReclusterRequested)="onFaceReclusterRequested()"
 
@@ -276,6 +291,7 @@
       [faceModelStatus]="faceService.modelStatus"
       [faceSettings]="currentFaceSettings"
       [faceStats]="faceService.stats"
+      [photoSettings]="currentPhotoSettings"
       [latestVersionAvailable]="latestVersionAvailable"
       [settingTabToShow]="settingTabToShow"
       [settingsButtons]="settingsButtons"

@@ -94,6 +94,7 @@ import { MagicSearchPipe } from './pipes/magic-search.pipe';
 import { ManualTagSortPipe } from './pipes/manual-tags-sort.pipe';
 import { PersonFilterPipe } from './pipes/person-filter.pipe';
 import { PersonsComponent } from './components/persons/persons.component';
+import { PhotoViewerComponent } from './components/photo-viewer/photo-viewer.component';
 import { PlaylistOnlyPipe } from './pipes/playlist-only.pipe';
 import { PlaylistPipe } from './pipes/playlist.pipe';
 import { RegexSearchPipe } from './pipes/regex-search.pipe';
@@ -155,6 +156,7 @@ import { YearPipe } from './pipes/year.pipe';
     ModalComponent,
     PersonFilterPipe,
     PersonsComponent,
+    PhotoViewerComponent,
     PlaylistOnlyPipe,
     PlaylistPipe,
     RecentlyOpenedComponent,

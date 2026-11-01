@@ -9,7 +9,7 @@ import { SettingsMetaGroup, SettingsMetaGroupLabels } from '../../common/setting
 import type { OnChanges, SimpleChanges } from '@angular/core';
 import type { OnInit } from '@angular/core';
 import type { SettingsButtonsType } from '../../common/settings-buttons';
-import type { FaceSettings } from '../../../../interfaces/final-object.interface';
+import type { FaceSettings, PhotoSettings } from '../../../../interfaces/final-object.interface';
 import type { FaceModelStatus, FaceStats } from '../../../../node/face/face-types';
 
 @Component({
@@ -37,6 +37,7 @@ export class SettingsComponent implements OnInit, OnChanges {
   readonly toggleButton = output<string>();
   readonly toggleHideButton = output<string>();
   readonly faceSettingsChanged = output<void>();
+  readonly photoSettingsChanged = output<void>();
   readonly faceScanRequested = output<void>();
   readonly faceReclusterRequested = output<void>();
 
@@ -46,6 +47,7 @@ export class SettingsComponent implements OnInit, OnChanges {
   readonly faceModelStatus = input<FaceModelStatus>();
   readonly faceSettings = input<FaceSettings>();
   readonly faceStats = input<FaceStats>();
+  readonly photoSettings = input<PhotoSettings>();
   readonly latestVersionAvailable = input();
   readonly settingTabToShow = input();
   @Input() settingsButtons: SettingsButtonsType;
@@ -78,6 +80,14 @@ export class SettingsComponent implements OnInit, OnChanges {
     if (settings) {
       settings.enabled = (event.target as HTMLInputElement).checked;
       this.faceSettingsChanged.emit();
+    }
+  }
+
+  togglePhotoEnabled(event: Event) {
+    const settings = this.photoSettings();
+    if (settings) {
+      settings.enabled = (event.target as HTMLInputElement).checked;
+      this.photoSettingsChanged.emit();
     }
   }
 

@@ -13,6 +13,7 @@ import { VirtualScrollerComponent } from '@iharbeck/ngx-virtual-scroller';
 import { AutoTagsSaveService } from './tags-auto/tags-save.service';
 import { FilePathService } from './views/file-path.service';
 import { FaceService, DEFAULT_FACE_SETTINGS } from '../services/face.service';
+import { PhotoService, DEFAULT_PHOTO_SETTINGS } from '../services/photo.service';
 import { ImageElementService } from '../services/image-element.service';
 import { ManualTagsService } from './tags-manual/manual-tags.service';
 import { ModalService } from './modal/modal.service';
@@ -28,7 +29,7 @@ import { SortOrderComponent } from './sort-order/sort-order.component';
 
 // Interfaces
 import type { ContextMenuCoordinate } from '../../../interfaces/shared-interfaces';
-import type { FinalObject, ImageElement, ScreenshotSettings, FaceSettings, ResolutionString } from '../../../interfaces/final-object.interface';
+import type { FinalObject, ImageElement, ScreenshotSettings, FaceSettings, PhotoSettings, ResolutionString } from '../../../interfaces/final-object.interface';
 import type { ImportStage } from '../../../node/main-support';
 import type { ServerDetails } from './statistics/statistics.component';
 import type { RemoteSettings, SettingsButtonSavedProperties, SettingsObject } from '../../../interfaces/settings-object.interface';
@@ -289,6 +290,10 @@ export class HomeComponent implements OnInit, AfterViewInit {
 
   currentFaceSettings: FaceSettings = { ...DEFAULT_FACE_SETTINGS };
 
+  currentPhotoSettings: PhotoSettings = { ...DEFAULT_PHOTO_SETTINGS };
+
+  photoViewerItem: ImageElement | null = null;  // built-in photo viewer (PHOTO_SUPPORT_DESIGN Phase 3)
+
   personsViewOpen = false;      // person list modal (§8.2)
   personFilterId = '';          // person filter (§8.1); '' = off
   private faceSettingsSnapshot: FaceSettings = { ...DEFAULT_FACE_SETTINGS };
@@ -405,6 +410,7 @@ export class HomeComponent implements OnInit, AfterViewInit {
     public autoTagsSaveService: AutoTagsSaveService,
     public cd: ChangeDetectorRef,
     public faceService: FaceService,
+    public photoService: PhotoService,
     public filePathService: FilePathService,
     public imageElementService: ImageElementService,
     public manualTagsService: ManualTagsService,
@@ -750,6 +756,9 @@ export class HomeComponent implements OnInit, AfterViewInit {
 
       this.currentFaceSettings = { ...DEFAULT_FACE_SETTINGS, ...(finalObject.faceSettings || {}) };
       this.faceSettingsSnapshot = { ...this.currentFaceSettings };
+
+      this.currentPhotoSettings = { ...DEFAULT_PHOTO_SETTINGS, ...(finalObject.photoSettings || {}) };
+      this.photoViewerItem = null;
       this.personFilterId = '';
       this.faceService.requestModelStatus();
       this.faceService.requestIndex();
@@ -1156,6 +1165,7 @@ export class HomeComponent implements OnInit, AfterViewInit {
         removeTags: this.autoTagsSaveService.getRemoveTags(),
         screenshotSettings: this.currentScreenshotSettings,
         faceSettings: this.currentFaceSettings,
+        photoSettings: this.currentPhotoSettings,
         tagColors: this.manualTagsService.getTagColors(),
         version: 3,
       };
@@ -1181,6 +1191,77 @@ export class HomeComponent implements OnInit, AfterViewInit {
     if (needsRecluster && this.currentFaceSettings.enabled) {
       this.faceService.requestRecluster(this.imageElementService.imageElements);
     }
+  }
+
+  /**
+   * Photo settings were changed in the Settings modal:
+   * mark the hub as needing saving and sync the settings to the backend.
+   * Toggling import on does not rescan by itself; the next folder scan
+   * picks photos up (design P2).
+   */
+  public onPhotoSettingsChanged(): void {
+    this.imageElementService.finalArrayNeedsSaving = true;
+    this.photoService.sendSettings(this.currentPhotoSettings);
+  }
+
+  /** All photo elements in the hub, in gallery (master list) order */
+  public photoItems(): ImageElement[] {
+    return this.imageElementService.imageElements.filter(
+      (element: ImageElement) => element.kind === 'photo' && !element.deleted && element.cleanName !== '*FOLDER*'
+    );
+  }
+
+  /** Open the built-in photo viewer on the given photo element */
+  public openPhotoViewer(item: ImageElement): void {
+    this.photoViewerItem = item;
+    this.cd.detectChanges();
+  }
+
+  public closePhotoViewer(): void {
+    this.photoViewerItem = null;
+    this.cd.detectChanges();
+  }
+
+  /** "3 / 12" style position label for the photo viewer */
+  public photoViewerPositionText(): string {
+    if (!this.photoViewerItem) {
+      return '';
+    }
+    const photos = this.photoItems();
+    const currentIndex = photos.indexOf(this.photoViewerItem);
+    if (currentIndex === -1) {
+      return '';
+    }
+    return `${currentIndex + 1} / ${photos.length}`;
+  }
+
+  /** Step the viewer to the previous/next photo (wraps around) */
+  public navigatePhotoViewer(delta: number): void {
+    if (!this.photoViewerItem) {
+      return;
+    }
+    const photos = this.photoItems();
+    const currentIndex = photos.indexOf(this.photoViewerItem);
+    if (currentIndex === -1 || photos.length === 0) {
+      this.photoViewerItem = null;
+      return;
+    }
+    const nextIndex = (currentIndex + delta + photos.length) % photos.length;
+    this.photoViewerItem = photos[nextIndex];
+    this.cd.detectChanges();
+  }
+
+  /** Open the current photo with the OS default application */
+  public openPhotoExternally(): void {
+    if (!this.photoViewerItem) {
+      return;
+    }
+    if (!this.sourceFolderService.sourceFolderConnected[this.photoViewerItem.inputSource]) {
+      this.modalService.openSnackbar(this.translate.instant('SETTINGS.rootFolderNotLive'));
+      return;
+    }
+    const fullPath = this.filePathService.getPathFromImageElement(this.photoViewerItem);
+    (window as any).myElectron.sendToMain('open-media-file', fullPath);
   }
 
   /**
@@ -1263,6 +1344,17 @@ export class HomeComponent implements OnInit, AfterViewInit {
    * @param clickedThumbnailIndex an index of the thumbnail clicked
    */
   public openVideo(item: ImageElement, clickedThumbnailIndex?: number): void {
+
+    // Photos open in the built-in viewer instead of an external player
+    // (docs/PHOTO_SUPPORT_DESIGN.md Phase 3)
+    if (item.kind === 'photo') {
+      if (!this.sourceFolderService.sourceFolderConnected[item.inputSource]) {
+        this.modalService.openSnackbar(this.translate.instant('SETTINGS.rootFolderNotLive'));
+        return;
+      }
+      this.openPhotoViewer(item);
+      return;
+    }
 
     if (!this.sourceFolderService.sourceFolderConnected[item.inputSource]) {
       console.log('not connected!');

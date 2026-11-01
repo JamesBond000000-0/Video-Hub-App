@@ -304,6 +304,9 @@
     "faceGenderageMissing": "genderage.onnx not found: place it in the model folder of the quality pack (it ships only with buffalo_l). Attributes are unavailable.",
     "faceGenderageReady": "genderage.onnx found: attribute estimation is available.",
     "faceHeading": "Face recognition",
+    "photoHeading": "Photos",
+    "photoEnable": "Import photos from source folders",
+    "photoEnableNote": "When on, image files (jpg, png, webp, and any other format your ffmpeg can read) are imported alongside videos. Photos already in the hub stay even if this is turned off.",
     "faceModelMismatch": "The existing face data was created with a different model pack. It will be rebuilt on the next scan.",
     "faceModelPack": "Model pack:",
     "faceModelsMissing": "Model files not found. Place the model files in this folder:",
@@ -621,5 +624,9 @@
     "timeToImport": "minutes to import",
     "videoDirectory": "video directory",
     "videos": "videos"
+  },
+  "PHOTO": {
+    "close": "Close",
+    "openExternal": "Open in default app"
   }
 }

@@ -24,6 +24,7 @@ export interface FinalObject {
   removeTags: string[];          // tags to remove
   screenshotSettings: ScreenshotSettings;
   faceSettings?: FaceSettings; // optional so pre-existing .vha2 files still parse; defaults are filled in on open
+  photoSettings?: PhotoSettings; // photo support (docs/PHOTO_SUPPORT_DESIGN.md); same optional pattern as faceSettings
   tagColors?: Record<string, string>; // lookup table for tag name to color mapping
   version: number;               // version of this vha file
 }
@@ -50,6 +51,7 @@ export interface ImageElement {
   // OPTIONAL
   // ------------------------------------------------------------------------
   defaultScreen?: number;        // index of default screenshot to show
+  kind?: 'photo';                // photo element (docs/PHOTO_SUPPORT_DESIGN.md P1); absent means video. Photos fix duration/fps/bitrate to 0 and screens to 1
   notes?: string;                // any free-form notes a user may want to add to any video
   persons?: string[];            // face-recognition person IDs in this video (cache; source of truth is the hub's faces/index.json)
   playlist?: number;             // timestamp of when user clicked `add to playlist`
@@ -108,6 +110,13 @@ export interface ScreenshotSettings {
   fixed: boolean;
   height: AllowedScreenshotHeight;
   n: number;
+}
+
+// Photo support settings (docs/PHOTO_SUPPORT_DESIGN.md P2).
+// Saved inside the .vha2 file; the toggle only gates importing new
+// photos — photos already in the hub stay visible when it is off.
+export interface PhotoSettings {
+  enabled: boolean;                // opt-in: import photos from source folders (default off)
 }
 
 export type FaceModelPack = 'quality' | 'light' | 'lvface';

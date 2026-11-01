@@ -354,6 +354,24 @@
     </div>
   }
 
+    <!-- PHOTOS -->
+
+    <span class="setting-heading">
+      {{ 'SETTINGS.photoHeading' | translate }}
+    </span>
+
+  @if (photoSettings(); as photo) {
+    <div class="face-settings">
+
+      <label class="face-toggle">
+        <input type="checkbox" [checked]="photo.enabled" (change)="togglePhotoEnabled($event)">
+        {{ 'SETTINGS.photoEnable' | translate }}
+      </label>
+      <div class="face-model-note">{{ 'SETTINGS.photoEnableNote' | translate }}</div>
+
+    </div>
+  }
+
     <!-- ZOOM BUTTONS -->
 
     <span class="setting-heading">

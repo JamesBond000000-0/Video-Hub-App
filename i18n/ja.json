@@ -551,5 +551,9 @@
     "timeToImport": "インポートの残り時間",
     "videoDirectory": "動画フォルダ",
     "videos": "動画"
+  },
+  "PHOTO": {
+    "close": "閉じる",
+    "openExternal": "既定のアプリで開く"
   }
 }
