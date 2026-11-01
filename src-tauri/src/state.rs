@@ -22,6 +22,7 @@ pub struct CurrentHub {
 pub struct VhaState {
   settings_file: PathBuf,
   face_settings: Mutex<Value>,
+  photo_settings: Mutex<Value>,
   face_provider_info: Mutex<Option<Value>>,
   current_hub: Mutex<Option<CurrentHub>>,
   system_messages: Mutex<Value>,
@@ -53,6 +54,7 @@ impl VhaState {
     Ok(Self {
       settings_file: settings_directory.join("settings.json"),
       face_settings: Mutex::new(crate::face::default_face_settings()),
+      photo_settings: Mutex::new(crate::photo::default_photo_settings()),
       face_provider_info: Mutex::new(None),
       current_hub: Mutex::new(None),
       system_messages: Mutex::new(system_messages),
@@ -89,6 +91,40 @@ impl VhaState {
       .map_err(|_| "Face settings state is unavailable".to_string())? =
       crate::face::face_settings_with_defaults(final_object.get("faceSettings"));
     Ok(())
+  }
+
+  /// The photo settings of the open hub: read from the hub's
+  /// FinalObject on open, partially merged on `photo-settings-updated`.
+  pub fn photo_settings(&self) -> Result<Value, String> {
+    Ok(
+      self
+        .photo_settings
+        .lock()
+        .map_err(|_| "Photo settings state is unavailable".to_string())?
+        .clone(),
+    )
+  }
+
+  pub fn set_photo_settings_from_final_object(&self, final_object: &Value) -> Result<(), String> {
+    *self
+      .photo_settings
+      .lock()
+      .map_err(|_| "Photo settings state is unavailable".to_string())? =
+      crate::photo::photo_settings_with_defaults(final_object.get("photoSettings"));
+    Ok(())
+  }
+
+  pub fn update_photo_settings(&self, patch: &Value) -> Result<Value, String> {
+    let mut current = self
+      .photo_settings
+      .lock()
+      .map_err(|_| "Photo settings state is unavailable".to_string())?;
+    if let (Some(target), Some(source)) = (current.as_object_mut(), patch.as_object()) {
+      for (key, value) in source {
+        target.insert(key.clone(), value.clone());
+      }
+    }
+    Ok(current.clone())
   }
 
   /// The provider resolution reported by the most recent face engine

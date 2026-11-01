@@ -926,6 +926,9 @@ pub struct FaceScanJob {
   pub max_frames_per_video: i64,
   pub sample_interval_sec: f64,
   pub min_face_size_px: f64,
+  /// Photos (design P5) are scanned as a single frame at t=0; their
+  /// stored duration is 0, which for a video means "unknown".
+  pub is_photo: bool,
 }
 
 pub struct FaceScanResult {
@@ -1018,7 +1021,7 @@ impl FaceEngine {
   /// result, while decode / inference exceptions propagate as Err (the
   /// worker turned them into an error result with frameCount 0).
   pub fn scan_video(&mut self, job: &FaceScanJob) -> Result<FaceScanResult, String> {
-    if job.duration <= 0.0 {
+    if !job.is_photo && job.duration <= 0.0 {
       return Ok(FaceScanResult {
         status: "error",
         frame_count: 0,
@@ -1026,7 +1029,11 @@ impl FaceEngine {
         error: Some("video duration unknown".to_string()),
       });
     }
-    let times = sample_times(job.duration, job.sample_interval_sec, job.max_frames_per_video);
+    let times = if job.is_photo {
+      vec![0.0]
+    } else {
+      sample_times(job.duration, job.sample_interval_sec, job.max_frames_per_video)
+    };
     let tmp_dir = job.faces_dir.join("tmp").join(&job.hash);
     std::fs::create_dir_all(&tmp_dir)
       .map_err(|e| format!("Cannot create {}: {e}", tmp_dir.display()))?;
@@ -1241,6 +1248,7 @@ pub fn scan_missing_pass(
         .unwrap_or(60),
       sample_interval_sec: setting_f64(settings, "sampleIntervalSec", 30.0),
       min_face_size_px: setting_f64(settings, "minFaceSizePx", 40.0),
+      is_photo: crate::photo::is_photo_element(element),
     };
     match engine.scan_video(&job) {
       Ok(result) => {

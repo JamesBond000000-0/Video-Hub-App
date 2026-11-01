@@ -176,6 +176,7 @@ fn open_hub(window: &Window, state: &VhaState, path: PathBuf) -> Result<(), Stri
     known_paths,
   })?;
   state.set_face_settings_from_final_object(&final_object)?;
+  state.set_photo_settings_from_final_object(&final_object)?;
 
   emit_to_angular(
     window,
@@ -400,6 +401,7 @@ fn start_import(window: &Window, state: &VhaState, args: &[Value]) -> Result<(),
     known_paths: Default::default(),
   })?;
   state.set_face_settings_from_final_object(&final_object)?;
+  state.set_photo_settings_from_final_object(&final_object)?;
 
   emit_to_angular(
     window,
@@ -476,6 +478,12 @@ fn face_settings_updated(window: &Window, state: &VhaState, args: &[Value]) -> R
   let patch = required_arg(args, 0)?;
   state.update_face_settings(patch)?;
   face_model_status(window, state)
+}
+
+fn photo_settings_updated(_window: &Window, state: &VhaState, args: &[Value]) -> Result<(), String> {
+  let patch = required_arg(args, 0)?;
+  state.update_photo_settings(patch)?;
+  Ok(())
 }
 
 fn string_arg(args: &[Value], index: usize) -> String {
@@ -723,6 +731,7 @@ pub fn ipc_send(
     "face-get-model-status" => face_model_status(&window, &state),
     "face-get-index" => face_get_index(&window, &state),
     "face-settings-updated" => face_settings_updated(&window, &state, &args),
+    "photo-settings-updated" => photo_settings_updated(&window, &state, &args),
     "face-recluster" => face_recluster(&window, &state, &args),
     "face-scan-request" => face_scan_request(&window, &state, &args),
     "face-attributes-request" => face_attributes_request(&window, &state, &args),

@@ -383,9 +383,41 @@ fn extract_metadata(
     .map_err(|error| format!("Cannot stat {}: {error}", video.full_path.display()))?;
   let file_size = file_metadata.len();
   let hash = hash_file(&video.full_path, file_size)?;
-  let screens = hub::compute_number_of_screenshots(screenshot_settings, duration);
+  let width = number_from_probe(best_stream.get("width"));
+  let height = number_from_probe(best_stream.get("height"));
 
-  Ok(json!({
+  // Photo candidates (design P3): accepted only when ffprobe reports
+  // real dimensions — that is the probe verification deciding whether
+  // the local ffmpeg build can handle the format at all. A photo has
+  // no duration, no fps, and exactly one "screen" (design P1).
+  let extension = video
+    .file_name
+    .rsplit_once('.')
+    .map(|(_, extension)| extension)
+    .unwrap_or("");
+  let is_photo = crate::photo::is_photo_extension(extension);
+  if is_photo && (width <= 0.0 || height <= 0.0) {
+    return Err("FFprobe returned no decodable image stream".to_string());
+  }
+  let (width, height) = if is_photo {
+    match probe_photo_rotation(video, tools, app, generation) {
+      Some(rotation) if rotation.abs() == 90.0 => (height, width),
+      _ => (width, height),
+    }
+  } else {
+    (width, height)
+  };
+  let (duration, fps, screens) = if is_photo {
+    (0.0, 0.0, 1)
+  } else {
+    (
+      duration,
+      fps,
+      hub::compute_number_of_screenshots(screenshot_settings, duration),
+    )
+  };
+
+  let mut element = json!({
     "birthtime": timestamp_ms(file_metadata.created()),
     "bitrate": 0,
     "cleanName": clean_file_name(&video.file_name),
@@ -396,7 +428,7 @@ fn extract_metadata(
     "fileSizeDisplay": "",
     "fps": fps,
     "hash": hash,
-    "height": number_from_probe(best_stream.get("height")),
+    "height": height,
     "index": 0,
     "inputSource": video.input_source,
     "lastPlayed": 0,
@@ -408,8 +440,68 @@ fn extract_metadata(
     "stars": 0.5,
     "timesPlayed": 0,
     "uuid": "",
-    "width": number_from_probe(best_stream.get("width")),
-  }))
+    "width": width,
+  });
+  if is_photo {
+    if let Some(object) = element.as_object_mut() {
+      object.insert("kind".to_string(), Value::String("photo".to_string()));
+    }
+  }
+  Ok(element)
+}
+
+/// Display rotation (degrees) of a photo's first frame, from the
+/// frame's displaymatrix side data (EXIF orientation). ffprobe's
+/// stream probe does not expose it for still images, but the decoded
+/// images (thumbnail, preview, face frames) all have the rotation
+/// applied — so the stored width/height must be swapped for ±90 to
+/// describe the image as displayed. Limited to the first frame so
+/// animated formats are not fully decoded.
+fn probe_photo_rotation(
+  video: &VideoFile,
+  tools: &MediaTools,
+  app: &AppHandle,
+  generation: u64,
+) -> Option<f64> {
+  let probe = run_process(
+    &tools.ffprobe,
+    vec![
+      OsString::from("-v"),
+      OsString::from("error"),
+      OsString::from("-of"),
+      OsString::from("json"),
+      OsString::from("-show_frames"),
+      OsString::from("-read_intervals"),
+      OsString::from("%+#1"),
+      OsString::from("-select_streams"),
+      OsString::from("V"),
+      video.full_path.clone().into_os_string(),
+    ],
+    Duration::from_secs(30),
+    true,
+    app,
+    generation,
+  )
+  .ok()?;
+  if !probe.status.success() {
+    return None;
+  }
+  let metadata: Value = serde_json::from_slice(&probe.stdout).ok()?;
+  let side_data = metadata
+    .get("frames")?
+    .get(0)?
+    .get("side_data_list")?
+    .as_array()?;
+  side_data
+    .iter()
+    .find(|entry| {
+      entry
+        .get("side_data_type")
+        .and_then(Value::as_str)
+        .is_some_and(|kind| kind.contains("displaymatrix"))
+    })?
+    .get("rotation")
+    .and_then(Value::as_f64)
 }
 
 fn source_map(hub: &crate::state::CurrentHub) -> BTreeMap<u64, SourceFolder> {
@@ -452,10 +544,17 @@ fn tagged_path_map(paths: &HashSet<PathBuf>) -> Value {
   Value::Object(map)
 }
 
+/// Walk a source folder. `report_extensions` decides which files are
+/// reported as existing (the renderer prunes hub elements whose file is
+/// not reported), while `import_extensions` decides which files become
+/// new-element candidates. Photo files are always reported — so photos
+/// already in the hub survive a rescan with photo import toggled off —
+/// but only imported when photo support is enabled (design P2).
 fn scan_folder(
   source_index: u64,
   source: &SourceFolder,
-  extensions: &HashSet<String>,
+  report_extensions: &HashSet<String>,
+  import_extensions: &HashSet<String>,
 ) -> Result<(HashSet<PathBuf>, Vec<VideoFile>), String> {
   if !source.path.is_dir() {
     return Err(format!("{} is not a readable directory", source.path.display()));
@@ -491,7 +590,7 @@ fn scan_folder(
       .extension()
       .map(|extension| extension.to_string_lossy().to_lowercase())
       .unwrap_or_default();
-    if !extensions.contains(&extension) {
+    if !report_extensions.contains(&extension) {
       continue;
     }
 
@@ -512,12 +611,14 @@ fn scan_folder(
     let file_name = entry.file_name().to_string_lossy().to_string();
 
     all_paths.insert(full_path.clone());
-    videos.push(VideoFile {
-      full_path,
-      input_source: source_index,
-      file_name,
-      partial_path,
-    });
+    if import_extensions.contains(&extension) {
+      videos.push(VideoFile {
+        full_path,
+        input_source: source_index,
+        file_name,
+        partial_path,
+      });
+    }
   }
 
   if scan_failed {
@@ -603,6 +704,12 @@ fn has_all_thumbnails(element: &Value, asset_folder: &Path, settings: &Value) ->
   if hash.is_empty() || !hash.chars().all(|character| character.is_ascii_alphanumeric()) {
     return false;
   }
+  if crate::photo::is_photo_element(element) {
+    // Photos need their gallery thumbnail and the viewer preview copy;
+    // they never have filmstrips or clips (design P4 / Phase 3).
+    return asset_folder.join("thumbnails").join(format!("{hash}.jpg")).is_file()
+      && asset_folder.join("previews").join(format!("{hash}.jpg")).is_file();
+  }
   let clips = settings
     .get("clipSnippets")
     .and_then(Value::as_f64)
@@ -633,6 +740,11 @@ fn extract_all(
     .ok_or_else(|| "Cannot extract media with an invalid file hash".to_string())?;
   if !item.full_path.is_file() {
     return Err(format!("{} is no longer available", item.full_path.display()));
+  }
+
+  if crate::photo::is_photo_element(element) {
+    let (thumb_timeout, _, _, _) = extraction_timeouts(element, settings);
+    return extract_photo_assets(item, hash, asset_folder, settings, tools, thumb_timeout, app, generation);
   }
 
   let duration = element.get("duration").and_then(Value::as_f64).unwrap_or(0.0);
@@ -779,6 +891,96 @@ fn extract_all(
   Ok(())
 }
 
+/// Generate a photo element's derived images: the gallery thumbnail
+/// (the photo itself scaled/padded exactly like a video screenshot, so
+/// the gallery layout is unchanged) and the viewer preview copy (long
+/// edge capped at PHOTO_PREVIEW_LONG_EDGE, true aspect, no padding).
+/// Both go through the same ffmpeg decode as everything else, so EXIF
+/// orientation is applied the same way for both.
+fn extract_photo_assets(
+  item: &ExtractionItem,
+  hash: &str,
+  asset_folder: &Path,
+  settings: &Value,
+  tools: &MediaTools,
+  thumb_timeout: Duration,
+  app: &AppHandle,
+  generation: u64,
+) -> Result<(), String> {
+  let height = settings.get("height").and_then(Value::as_f64).unwrap_or(288.0);
+  let width = height * (16.0 / 9.0);
+  let thumbnail = asset_folder.join("thumbnails").join(format!("{hash}.jpg"));
+  let preview = asset_folder.join("previews").join(format!("{hash}.jpg"));
+  let filmstrip = asset_folder.join("filmstrips").join(format!("{hash}.jpg"));
+  for folder in [
+    asset_folder.join("thumbnails"),
+    asset_folder.join("previews"),
+    asset_folder.join("filmstrips"),
+  ] {
+    fs::create_dir_all(&folder)
+      .map_err(|error| format!("Cannot create {}: {error}", folder.display()))?;
+  }
+
+  if !thumbnail.is_file() {
+    run_ffmpeg(
+      tools,
+      vec![
+        OsString::from("-i"),
+        item.full_path.clone().into_os_string(),
+        OsString::from("-frames"),
+        OsString::from("1"),
+        OsString::from("-q:v"),
+        OsString::from("2"),
+        OsString::from("-vf"),
+        OsString::from(scale_and_pad(width, height)),
+        thumbnail.clone().into_os_string(),
+      ],
+      thumb_timeout,
+      app,
+      generation,
+    )?;
+    if !thumbnail.is_file() {
+      return Err("FFmpeg did not create a photo thumbnail".to_string());
+    }
+  }
+
+  // The filmstrip/full gallery views read filmstrips/<hash>.jpg for
+  // every element; a photo's single "strip" is its thumbnail, so those
+  // views keep working without renderer-side special cases.
+  if !filmstrip.is_file() {
+    fs::copy(&thumbnail, &filmstrip)
+      .map_err(|error| format!("Cannot copy photo thumbnail to filmstrip: {error}"))?;
+  }
+
+  if !preview.is_file() {
+    let edge = crate::photo::PHOTO_PREVIEW_LONG_EDGE;
+    run_ffmpeg(
+      tools,
+      vec![
+        OsString::from("-i"),
+        item.full_path.clone().into_os_string(),
+        OsString::from("-frames"),
+        OsString::from("1"),
+        OsString::from("-q:v"),
+        OsString::from("3"),
+        OsString::from("-vf"),
+        OsString::from(format!(
+          "scale=w='min({edge},iw)':h='min({edge},ih)':force_original_aspect_ratio=decrease"
+        )),
+        preview.clone().into_os_string(),
+      ],
+      Duration::from_secs(30),
+      app,
+      generation,
+    )?;
+    if !preview.is_file() {
+      return Err("FFmpeg did not create a photo preview".to_string());
+    }
+  }
+
+  Ok(())
+}
+
 fn extract_thumbnails(
   app: &AppHandle,
   generation: u64,
@@ -833,7 +1035,23 @@ fn run_scan_pipeline(
     .current_hub()?
     .ok_or_else(|| "No hub is currently open".to_string())?;
   let sources = source_map(&current);
-  let extensions = acceptable_extensions(&app);
+  let mut import_extensions = acceptable_extensions(&app);
+  let photo_settings = app.state::<VhaState>().photo_settings()?;
+  if crate::photo::photo_import_enabled(&photo_settings) {
+    import_extensions.extend(
+      crate::photo::PHOTO_EXTENSIONS
+        .iter()
+        .map(|extension| extension.to_string()),
+    );
+  }
+  // Photo files are always part of the existence report, even with
+  // import disabled, so already-imported photos are not pruned (P2).
+  let mut report_extensions = import_extensions.clone();
+  report_extensions.extend(
+    crate::photo::PHOTO_EXTENSIONS
+      .iter()
+      .map(|extension| extension.to_string()),
+  );
   let mut pending = Vec::new();
 
   for (source_index, source) in sources {
@@ -852,7 +1070,7 @@ fn run_scan_pipeline(
       "started-watching-this-dir",
       vec![Value::from(source_index)],
     );
-    let (all_paths, videos) = match scan_folder(source_index, &source, &extensions) {
+    let (all_paths, videos) = match scan_folder(source_index, &source, &report_extensions, &import_extensions) {
       Ok(result) => result,
       Err(error) => {
         emit_job(
@@ -1091,7 +1309,7 @@ mod tests {
       path: root.clone(),
       watch: false,
     };
-    let (all_paths, videos) = scan_folder(0, &source, &extensions).expect("scan fixture");
+    let (all_paths, videos) = scan_folder(0, &source, &extensions, &extensions).expect("scan fixture");
     assert_eq!(all_paths.len(), 2);
     assert_eq!(videos.len(), 2);
     assert!(videos.iter().any(|video| {
@@ -1109,5 +1327,47 @@ mod tests {
     assert!(ACCEPTABLE_EXTENSIONS.contains(&"mp4"));
     assert!(ACCEPTABLE_EXTENSIONS.contains(&"mkv"));
     assert!(ACCEPTABLE_EXTENSIONS.contains(&"webm"));
+  }
+
+  #[test]
+  fn photo_files_are_reported_but_only_imported_when_enabled() {
+    let root = std::env::temp_dir().join(format!(
+      "vha-media-photo-scan-{}",
+      std::process::id()
+    ));
+    let _ = fs::remove_dir_all(&root);
+    fs::create_dir_all(&root).expect("create photo scan directory");
+    fs::write(root.join("clip.mp4"), b"video").expect("write video");
+    fs::write(root.join("shot.JPG"), b"photo").expect("write photo");
+
+    let videos_only: HashSet<String> = ACCEPTABLE_EXTENSIONS
+      .iter()
+      .map(|extension| extension.to_string())
+      .collect();
+    let mut with_photos = videos_only.clone();
+    with_photos.extend(
+      crate::photo::PHOTO_EXTENSIONS
+        .iter()
+        .map(|extension| extension.to_string()),
+    );
+    let source = SourceFolder {
+      path: root.clone(),
+      watch: false,
+    };
+
+    // Import disabled: the photo is still reported as existing (so an
+    // already-imported photo element is not pruned) but is not a
+    // new-element candidate.
+    let (all_paths, videos) = scan_folder(0, &source, &with_photos, &videos_only).expect("scan fixture");
+    assert_eq!(all_paths.len(), 2);
+    assert_eq!(videos.len(), 1);
+    assert_eq!(videos[0].file_name, "clip.mp4");
+
+    // Import enabled: the photo becomes a candidate too.
+    let (all_paths, videos) = scan_folder(0, &source, &with_photos, &with_photos).expect("scan fixture");
+    assert_eq!(all_paths.len(), 2);
+    assert_eq!(videos.len(), 2);
+
+    fs::remove_dir_all(root).expect("remove photo scan fixture");
   }
 }
